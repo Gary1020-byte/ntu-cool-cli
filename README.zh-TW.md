@@ -69,7 +69,7 @@ ntu-cool --probe
 python3 -m unittest discover -s tests -v
 ```
 
-31 個離線測試，不連網路、不用帳密。涵蓋 JSON 前綴處理、
+41 個離線測試，不連網路、不用帳密。涵蓋 JSON 前綴處理、
 不用 BeautifulSoup 的 HTML 表單解析、憑證檔權限防護，
 以及最關鍵的一項 —— 藏在 `<head>` 的誘捕表單**永遠不會變成 POST 目標**。
 
@@ -153,6 +153,11 @@ folder 物件自帶自己的 URL：**讀欄位**。
 
 數任何東西之前先依 file `id` 去重。`/folders` 會在同一個清單裡同時回傳課程根資料夾
 和它的子資料夾，所以遞迴寫得太直覺的話，會數出**110 個檔案，實際只有 64 個**。
+`fetch_course_files()` 現在有做這件事；曾經有一版沒做，每個重複都回報了。
+有一個測試會在它被拿掉時失敗。
+
+公告附件是**第三組**，和前兩者都不同：某學期有 5 個，Files 樹有 64 個。
+`--list-files` 和 `--download-files` 兩組都會收。
 
 ---
 
@@ -237,7 +242,7 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
 pyproject.toml                        讓 `ntu-cool` 變成可安裝指令
-tests/test_ntu_fetch.py               31 個離線測試，不連網路
+tests/test_ntu_fetch.py               41 個離線測試，不連網路
 ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
 references/upstream-findings.md       為什麼沒有直接沿用那份 2019 的程式
 references/ceiba-unreachable.md       可達性對照實驗
