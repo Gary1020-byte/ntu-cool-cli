@@ -13,7 +13,7 @@ and finding it unusable on a modern Python. Reimplemented as a single
 python3 scripts/ntu_fetch.py --probe
 
 # what courses am I taking this term?
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 ```
 
 ---
@@ -94,7 +94,7 @@ It returns courses the account has **ever** been enrolled in.
 
 ```
 API said:      10 courses, newest announcement 2026-10-13, oldest 2025-09-05
-               → omitted 3 current-term courses, including <course name>
+               → omitted 3 current-term courses, one of them your main math course
                → included 3 dead courses as {"access_restricted_by_date": true}
 
 Home page says: 7 courses, term "<term>"  ← correct
@@ -142,23 +142,23 @@ there are 64**.
 
 ```bash
 # current term roster
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 
 # one course's announcements to stdout
-python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --stdout
+python3 scripts/ntu_fetch.py --course <COURSE> --since 2026-09-01 --stdout
 
 # write markdown into a notes directory
-python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --out ./captures/
+python3 scripts/ntu_fetch.py --course <COURSE> --since 2026-09-01 --out ./captures/
 ```
 
 ### Course files
 
 ```bash
 # list everything in the Files tree
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 
 # download, skipping anything over 20 MB
-python3 scripts/ntu_fetch.py --download-files --course <course name> \
+python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
     --cred-file ~/.ntu-creds.json --files-out ./files/ --max-mb 20
 ```
 

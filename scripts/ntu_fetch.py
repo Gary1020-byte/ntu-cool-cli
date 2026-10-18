@@ -19,7 +19,7 @@ Design constraints, each one earned:
 
   # with credentials supplied by the caller
   NTU_USER=... NTU_PASS=... python3 ntu_fetch.py \
-      --course <course name> --since 2026-10-01 --out ~/.../captures/
+      --course <COURSE> --since 2026-10-01 --out ~/captures/
 """
 from __future__ import annotations
 
@@ -227,7 +227,7 @@ def fetch_all_courses_historical(s: requests.Session) -> list[dict]:
 
 
 def find_course(courses: list[dict], needle: str) -> dict | None:
-    """Match on id or name, case-insensitive. Substring so 「<course name>」 finds it."""
+    """Match on id or name, case-insensitive substring match."""
     needle = needle.lower()
     for c in courses:
         if needle in str(c.get("id", "")).lower() or needle in str(c.get("name", "")).lower():
@@ -534,7 +534,7 @@ def main() -> int:
     ap.add_argument("--probe", action="store_true",
                     help="unauthenticated reachability check, no credentials used")
     ap.add_argument("--course", action="append", default=[],
-                    help="course id or name substring; repeatable. e.g. <course name>")
+                    help="course id or name substring; repeatable")
     ap.add_argument("--all-courses", action="store_true",
                     help="fetch every enrolled course")
     ap.add_argument("--since", help="YYYY-MM-DD, filter announcements older than this")
