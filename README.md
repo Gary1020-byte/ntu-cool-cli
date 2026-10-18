@@ -46,17 +46,41 @@ source is credited in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
 
 ## Install
 
+As a command — this gives you `ntu-cool` on your PATH:
+
 ```bash
 git clone <this-repo>
 cd ntu-cool-announcements-skill
-python3 -m pip install --user requests
+pipx install .          # or: uv tool install .  /  python3 -m pip install --user .
+ntu-cool --probe
 ```
 
-Requires Python 3.9+ and a system Python that has `requests`. Verify:
+The module is `ntu_fetch`, the command is `ntu-cool`, and both do exactly the
+same thing — `ntu-cool --help` and `python3 scripts/ntu_fetch.py --help` are
+identical. Use whichever suits; the script needs no install at all.
+
+Requires Python 3.9+ and `requests`. Verify:
 
 ```bash
-python3 scripts/ntu_fetch.py --probe
+ntu-cool --probe
 ```
+
+### Tests
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+31 offline tests, no network and no credentials. They cover the JSON prefix
+handling, HTML form extraction without BeautifulSoup, the credential-file
+permission guard, and — the one that matters — that a trap form parked in
+`<head>` can never become a POST target.
+
+### Note
+
+The console script is a thin wrapper: `ntu_fetch:main`, with `main()` returning
+the exit code. Importing the module has no side effects, so the tests can import
+it without logging in or reaching the network.
 
 > **Test with the interpreter you will actually use.** A virtualenv's Python and the
 > system Python have separate `site-packages`. A bug report that says "the import
@@ -223,6 +247,8 @@ That is a network-access question, not a code one — see
 ```
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
+pyproject.toml                        makes `ntu-cool` installable
+tests/test_ntu_fetch.py               31 offline tests, no network
 ACKNOWLEDGEMENTS.md                   what came from the upstream project
 references/upstream-findings.md       why the 2019 crawler was not adopted as-is
 references/ceiba-unreachable.md       reachability control test

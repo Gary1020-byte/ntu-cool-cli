@@ -22,6 +22,9 @@ tmp/
 *.part
 
 # Python
+dist/
+build/
+*.whl
 __pycache__/
 *.py[cod]
 *.egg-info/
