@@ -71,10 +71,14 @@ ntu-cool --probe
 python3 -m unittest discover -s tests -v
 ```
 
-41 offline tests, no network and no credentials. They cover the JSON prefix
+52 offline tests, no network and no credentials. They cover the JSON prefix
 handling, HTML form extraction without BeautifulSoup, the credential-file
 permission guard, and — the one that matters — that a trap form parked in
 `<head>` can never become a POST target.
+
+Two classes guard the bug that was silently losing files: one drives
+`_paged_get` across a multi-page Link chain, one proves the walk enters through
+the root and still works when `/folders/root` answers 403.
 
 ### Note
 
@@ -137,8 +141,9 @@ last term's exam schedule — never as the current roster.
 Measured on one term:
 
 ```
-20 announcement bodies   6,658 characters   0 file links
-course Files tree        64 files          91 MB
+20 announcement bodies    2,041 characters   0 file links
+course Files tree         91 files
+announcement attachments   5 files           <- a third set
 ```
 
 An announcement whose entire body is the word `attached` is **not** a missing-
@@ -146,25 +151,41 @@ attachment case to report — it is the normal shape, and the files are fully
 retrievable. Reporting "this course has no attachments" after reading announcements
 alone reads as complete and misses every worksheet.
 
-### 3. Read the file URLs off the folder objects, never compose them
+### 3. Enter through the root, and follow `Link` — three separate traps
 
 ```
-GET /api/v1/courses/{id}/folders    → folder objects
-folder["files_url"]                 → files in that folder
-folder["folders_url"]               → child folders; recurse
+GET /api/v1/courses/{id}/folders/root   → the root folder        <- enter here
+folder["files_url"]                     → files in that folder   (paginated)
+folder["folders_url"]                   → child folders; recurse (paginated)
 ```
 
-Six plausible spellings were tried and all return 404 or 400 — including
-`/api/v1/courses/{id}/files`, which looks obviously right and is dead. The folder
-objects carry their own URLs; read the fields.
+**(a) The URLs come off the objects.** Six plausible spellings return 404 or 400 —
+including `/api/v1/courses/{id}/files`, which looks obviously right and is dead.
 
-Dedupe by file `id` before counting anything. `/folders` returns the course root
-*and* its subfolders in one list, so a naive recursive walk reports **110 files where
-there are 64**. `fetch_course_files()` does this now; a version shipped without it and
-reported every duplicate. There is a test that fails if it is ever removed.
+**(b) `/folders` is a flat list, not a tree.** It enumerates folders at every depth.
+Iterating it *and* recursing `folders_url` walks each non-root folder twice — three
+times when its parent is listed too. A naive walk reported **110 files where 64 were
+retrievable**. Enter through the root instead.
+
+**(c) Every list endpoint is paginated at 10 by default.** This is the trap that
+actually loses data: a folder holding 29 files returns 10, with no error and no
+empty-looking tail. Measured across one term — **27 of 91 files silently missing**.
+
+```
+projected from Link header:  <...>; rel="next", <...>; rel="last"
+bare request:                page=1&per_page=10
+```
+
+Follow `Link: rel="next"`. Do not "fix" it with a bigger `per_page` — the API caps
+that parameter, and the Link header is the only pagination contract it honours.
+
+`fetch_course_files()` enters through `/folders/root` (falling back to the
+parentless entries of `/folders`, because `/folders/root` answers **403** on at
+least one non-credit course), paginates both directions, and dedupes by file `id`
+as a last resort. There are tests that fail if any of the three is removed.
 
 Announcement attachments are a **third** set, separate from both: one term had 5 of
-them and 64 in the Files tree. `--list-files` and `--download-files` collect both.
+them and 91 in the Files tree. `--list-files` and `--download-files` collect both.
 
 ---
 
@@ -206,8 +227,9 @@ the same display name never collide.
 | NTU Cool endpoints still exist | verified — 401 + structured body, not 404 |
 | the SAML login sequence | verified against the live site |
 | `/api/v1/courses` as current roster | **false** — see trap 1 |
-| the Files-tree endpoint shape | verified, 64 files enumerated |
+| the Files-tree endpoint shape | verified, 91 files enumerated across a term |
 | downloads are really PDFs | magic-checked per file |
+| nothing is silently dropped | verified — pagination followed via `Link` |
 | Ceiba reachability | **varies by network** — see `references/ceiba-unreachable.md` |
 | Ceiba scraping | not implemented; the upstream positional table parser is unverified |
 
@@ -252,7 +274,7 @@ That is a network-access question, not a code one — see
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
 pyproject.toml                        makes `ntu-cool` installable
-tests/test_ntu_fetch.py               41 offline tests, no network
+tests/test_ntu_fetch.py               52 offline tests, no network
 ACKNOWLEDGEMENTS.md                   what came from the upstream project
 references/upstream-findings.md       why the 2019 crawler was not adopted as-is
 references/ceiba-unreachable.md       reachability control test
