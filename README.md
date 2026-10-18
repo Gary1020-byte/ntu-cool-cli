@@ -38,6 +38,10 @@ third-party import is `requests`.** HTML parsing uses `html.parser` from the std
 because the two things needed from BeautifulSoup — "find a form, read its inputs"
 and "flatten visible text" — are twenty lines of `HTMLParser`.
 
+None of this is a fork. The upstream repo has no LICENSE file, so it cannot be
+redistributed — nothing was copied from it, and what was learned from reading its
+source is credited in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+
 ---
 
 ## Install
@@ -219,6 +223,7 @@ That is a network-access question, not a code one — see
 ```
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
+ACKNOWLEDGEMENTS.md                   what came from the upstream project
 references/upstream-findings.md       why the 2019 crawler was not adopted as-is
 references/ceiba-unreachable.md       reachability control test
 references/testing-and-interpreters.md  the venv-vs-system-python trap
