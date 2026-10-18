@@ -36,6 +36,10 @@ TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 因為真的需要 BeautifulSoup 的只有兩件事 —— 「找一個表單、讀它的 input」
 跟「把可見文字攤平」—— 那就是二十行程式碼的 `HTMLParser`。
 
+這**不是 fork**。上游專案沒有 LICENSE 檔，因此不能轉載 ——
+本專案沒有從它複製任何程式碼，
+從讀它的原始碼學到的東西都列在 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+
 ---
 
 ## 安裝
@@ -210,6 +214,7 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 ```
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
+ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
 references/upstream-findings.md       為什麼沒有直接沿用那份 2019 的程式
 references/ceiba-unreachable.md       可達性對照實驗
 references/testing-and-interpreters.md  venv 和系統 Python 的坑
