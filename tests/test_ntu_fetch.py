@@ -246,15 +246,22 @@ class TestAbsActionRefusesOffOrigin(unittest.TestCase):
 
 
 class _FakeResponse:
-    def __init__(self, payload, status=200):
+    def __init__(self, payload, status=200, headers=None):
         self.status_code = status
         self.text = json.dumps(payload)
         self.content = self.text.encode()
+        # _paged_get reads Link to find rel="next"; no Link means one page.
+        self.headers = headers if headers is not None else {}
 
 
 class _FakeSession:
     """Stands in for requests.Session. Every URL maps to canned payloads so the
-    recursion can be driven without touching the network."""
+    recursion can be driven without touching the network.
+
+    The canned routes are keyed by the bare URL; the `per_page` param the code
+    now sends is ignored on lookup, so a route describes what the endpoint holds
+    in total, not one page of it. That is deliberate: these tests are about
+    traversal and dedupe, and a separate class covers pagination."""
 
     def __init__(self, routes):
         self.routes = routes
@@ -384,6 +391,164 @@ class TestSourceHasNoPersonalCourseNames(unittest.TestCase):
                 src = fh.read()
             for n in names:
                 self.assertNotIn(n, src, f"course name {n!r} found in {path}")
+
+
+class _PagedResponse(_FakeResponse):
+    def __init__(self, payload, status=200, next_url=None):
+        super().__init__(payload, status)
+        if next_url:
+            self.headers = {
+                "Link": f'<{next_url}>; rel="next", <{next_url}>; rel="last"'}
+
+
+class _PagedSession:
+    """Returns one page per call and advertises the next through Link. This is
+    the only pagination contract Canvas honours — there is no total count to
+    compute a page count from."""
+
+    def __init__(self, pages):
+        self.pages = pages            # list of payloads, one per page
+        self.calls = 0
+
+    def get(self, url, params=None, **kw):
+        idx = self.calls
+        self.calls += 1
+        if idx >= len(self.pages):
+            return _FakeResponse([])
+        nxt = f"https://x/page/{idx + 2}" if idx + 1 < len(self.pages) else None
+        return _PagedResponse(self.pages[idx], next_url=nxt)
+
+
+class TestPagedGet(unittest.TestCase):
+    """THE bug that was silently losing files.
+
+    Canvas defaults to per_page=10 and caps the parameter. One course's folder
+    held 29 files and an unparameterised call returned 10 — 19 files gone, no
+    error, no empty-looking tail. Across a term that was 27 of 91 files. The
+    fix is to follow Link rel="next", not to guess a bigger page size."""
+
+    def test_single_page_returns_everything(self):
+        s = _PagedSession([[1, 2, 3]])
+        self.assertEqual(ntu_fetch._paged_get(s, "https://x/all"), [1, 2, 3])
+        self.assertEqual(s.calls, 1)
+
+    def test_follows_next_across_pages(self):
+        s = _PagedSession([[1, 2], [3, 4], [5]])
+        self.assertEqual(ntu_fetch._paged_get(s, "https://x/all"), [1, 2, 3, 4, 5])
+
+    def test_visits_each_page_once(self):
+        s = _PagedSession([[1], [2], [3]])
+        ntu_fetch._paged_get(s, "https://x/all")
+        self.assertEqual(s.calls, 3)
+
+    def test_no_link_header_means_one_page(self):
+        s = _PagedSession([[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]])
+        out = ntu_fetch._paged_get(s, "https://x/all")
+        self.assertEqual(len(out), 11, "must not truncate at 10")
+
+    def test_non_list_payload_is_returned_whole(self):
+        class S:
+            def get(self, url, params=None, **kw):
+                return _FakeResponse({"id": 1, "name": "root"})
+        out = ntu_fetch._paged_get(S(), "https://x/root")
+        self.assertEqual(out, {"id": 1, "name": "root"})
+
+    def test_non_200_stops_and_returns_what_it_has(self):
+        class S:
+            def __init__(self): self.n = 0
+            def get(self, url, params=None, **kw):
+                self.n += 1
+                if self.n == 1:
+                    return _PagedResponse([1], next_url="https://x/p2")
+                return _FakeResponse([], status=500)
+        self.assertEqual(ntu_fetch._paged_get(S(), "https://x/all"), [1])
+
+    def test_requests_a_page_size_above_the_canvas_default(self):
+        seen = []
+
+        class S:
+            def get(self, url, params=None, **kw):
+                seen.append(params)
+                return _FakeResponse([])
+
+        ntu_fetch._paged_get(S(), "https://x/all")
+        self.assertTrue(seen and seen[0].get("per_page", 0) > 10,
+                        f"default page size is still in play: {seen}")
+
+
+class TestFetchCourseFilesEntersThroughTheRoot(unittest.TestCase):
+    """Walking the flat /folders list AND recursing double-counts: that list
+    enumerates folders at every depth, not just the root. 110 where 64 are real.
+    The entry point must be the root, or the parentless entries of the list."""
+
+    ROOT = {"id": 1, "full_name": "course files", "parent_folder_id": None,
+            "files_url": "https://x/f/1", "folders_url": "https://x/d/1"}
+
+    def test_root_endpoint_is_used_when_available(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders/root": self.ROOT,
+            "https://x/f/1": [{"id": 11, "display_name": "a.pdf"}],
+            "https://x/d/1": [],
+        }
+        s = _FakeSession(routes)
+        out = ntu_fetch.fetch_course_files(s, 9)
+        self.assertEqual([f["id"] for f in out], [11])
+
+    class _403Root(_FakeSession):
+        def get(self, url, **kw):
+            if url.endswith("/folders/root"):
+                return _FakeResponse({"status": "unauthorized"}, status=403)
+            return super().get(url, **kw)
+
+    class _NonDictRoot(_FakeSession):
+        def get(self, url, **kw):
+            if url.endswith("/folders/root"):
+                return _FakeResponse([])      # 200, but not a folder
+            return super().get(url, **kw)
+
+    def test_falls_back_to_the_list_when_root_403s(self):
+        # /folders/root answers 403 on at least one non-credit course while the
+        # list endpoint still works. Losing that course entirely would be a
+        # silent hole in the corpus.
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders/root": [],
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders": [
+                self.ROOT,
+                {"id": 2, "full_name": "course files/unfiled",
+                 "parent_folder_id": 1,
+                 "files_url": "https://x/f/2", "folders_url": "https://x/d/2"},
+            ],
+            "https://x/f/1": [],
+            "https://x/d/1": [
+                {"id": 2, "full_name": "course files/unfiled",
+                 "parent_folder_id": 1,
+                 "files_url": "https://x/f/2", "folders_url": "https://x/d/2"},
+            ],
+            "https://x/f/2": [{"id": 22, "display_name": "b.pdf"}],
+            "https://x/d/2": [],
+        }
+        s = self._403Root(routes)
+        out = ntu_fetch.fetch_course_files(s, 9)
+        self.assertEqual([f["id"] for f in out], [22],
+                         "fallback must enter only through the parentless folder")
+
+    def test_falls_back_when_root_returns_a_non_dict(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders/root": [],
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders": [self.ROOT],
+            "https://x/f/1": [{"id": 11, "display_name": "a.pdf"}],
+            "https://x/d/1": [],
+        }
+        out = ntu_fetch.fetch_course_files(self._NonDictRoot(routes), 9)
+        self.assertEqual([f["id"] for f in out], [11])
+
+    def test_raises_when_no_root_is_findable(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders/root": [],
+            "https://cool.ntu.edu.tw/api/v1/courses/9/folders": [],
+        }
+        with self.assertRaises(Exception):
+            ntu_fetch.fetch_course_files(_FakeSession(routes), 9)
 
 
 if __name__ == "__main__":
