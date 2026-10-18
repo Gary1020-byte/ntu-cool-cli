@@ -1,0 +1,6 @@
+# One dependency. The upstream project this was derived from needed six
+# (beautifulsoup4, Flask, python-dateutil, PyYAML, requests, SQLAlchemy) plus a
+# Flask daemon and an ORM migration surface, to read one JSON endpoint.
+#
+# HTML parsing uses html.parser from the stdlib; argument parsing uses argparse.
+requests>=2.28
