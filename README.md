@@ -2,6 +2,8 @@
 
 Fetch NTU Cool course announcements and course files from the command line.
 
+> 中文版: [README.zh-TW.md](README.zh-TW.md)
+
 Built after reading [`brianbbsu/NTU-Announcement-Crawler`](https://github.com/brianbbsu/NTU-Announcement-Crawler)
 and finding it unusable on a modern Python. Reimplemented as a single
 ~700-line script with **one** third-party dependency.
@@ -19,7 +21,7 @@ python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.
 ## Why not just use the upstream crawler
 
 That project targets a 2019 interpreter and carries a Flask + SQLAlchemy + ORM
-service to answer a one-endpoint question. On Python 3.14 it fails twice:
+service to answer a one-endpoint question. On Python 3.14 it fails three ways:
 
 ```
 ImportError: cannot import name 'Markup' from 'jinja2'          # Flask 1.0.2
@@ -42,7 +44,7 @@ and "flatten visible text" — are twenty lines of `HTMLParser`.
 
 ```bash
 git clone <this-repo>
-cd ntu-course-announcements
+cd ntu-cool-announcements-skill
 python3 -m pip install --user requests
 ```
 
