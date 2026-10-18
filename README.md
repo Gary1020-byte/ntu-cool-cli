@@ -71,7 +71,7 @@ ntu-cool --probe
 python3 -m unittest discover -s tests -v
 ```
 
-31 offline tests, no network and no credentials. They cover the JSON prefix
+41 offline tests, no network and no credentials. They cover the JSON prefix
 handling, HTML form extraction without BeautifulSoup, the credential-file
 permission guard, and — the one that matters — that a trap form parked in
 `<head>` can never become a POST target.
@@ -160,7 +160,11 @@ objects carry their own URLs; read the fields.
 
 Dedupe by file `id` before counting anything. `/folders` returns the course root
 *and* its subfolders in one list, so a naive recursive walk reports **110 files where
-there are 64**.
+there are 64**. `fetch_course_files()` does this now; a version shipped without it and
+reported every duplicate. There is a test that fails if it is ever removed.
+
+Announcement attachments are a **third** set, separate from both: one term had 5 of
+them and 64 in the Files tree. `--list-files` and `--download-files` collect both.
 
 ---
 
@@ -248,7 +252,7 @@ That is a network-access question, not a code one — see
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
 pyproject.toml                        makes `ntu-cool` installable
-tests/test_ntu_fetch.py               31 offline tests, no network
+tests/test_ntu_fetch.py               41 offline tests, no network
 ACKNOWLEDGEMENTS.md                   what came from the upstream project
 references/upstream-findings.md       why the 2019 crawler was not adopted as-is
 references/ceiba-unreachable.md       reachability control test
