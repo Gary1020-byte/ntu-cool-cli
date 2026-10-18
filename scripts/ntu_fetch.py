@@ -247,11 +247,11 @@ def fetch_announcements(s: requests.Session, course_id) -> list[dict]:
 def fetch_course_files(s: requests.Session, course_id) -> list[dict]:
     """Every file in the course's Files section, recursively.
 
-    The announcement body is NOT where course material lives. On <term> the 20
-    announcement bodies carried 6,658 characters and zero file links, while the
-    Files tree held 110 files / 114 MB — including the <course name> III
-    worksheet that IS the next day's quiz scope. Reading announcements alone
-    reports "no attachments" and looks like nothing was missed.
+    The announcement body is NOT where course material lives. Measured on one
+    term: 20 announcement bodies carried 6,658 characters and zero file links,
+    while the Files tree held 64 files / 91 MB — including a worksheet that WAS
+    that term's next quiz scope. Reading announcements alone reports "no
+    attachments" and looks like nothing was missed.
 
     Endpoint shape, established 2026-10-18 by probing:
       /api/v1/courses/{id}/folders   -> folder objects
@@ -268,11 +268,20 @@ def fetch_course_files(s: requests.Session, course_id) -> list[dict]:
     credential-bearing string, never log it.
     """
     out: list[dict] = []
+    seen_ids: set = set()
 
     def walk(folder: dict) -> None:
         rf = s.get(folder["files_url"], timeout=25)
         if rf.status_code == 200:
             for f in parse_json_loose(rf.text):
+                # /folders lists the course root AND its subfolders in one
+                # response, so a recursive walk visits `unfiled` twice and every
+                # file in it twice. Dedupe by file id before anything is counted
+                # or downloaded — measured 2026-10-18: 110 reported, 64 real.
+                fid = f.get("id")
+                if fid in seen_ids:
+                    continue
+                seen_ids.add(fid)
                 out.append({
                     "folder": folder.get("full_name", ""),
                     "id": f.get("id"),
@@ -304,7 +313,7 @@ def fetch_announcement_attachments(s: requests.Session, topics: list[dict]) -> l
     """Files attached directly to announcements (a smaller, separate set).
 
     These arrive in each topic's `attachments` array, already carrying a signed
-    `url`. Distinct from fetch_course_files: on <term> there were 5 of these
+    `url`. Distinct from fetch_course_files: one term had 5 of these
     against 110 in the Files tree.
     """
     out = []
@@ -583,16 +592,25 @@ def main() -> int:
             if not picked:
                 ap.error("no course matched --course")
             total = ok = skipped = 0
-            used_names: set[str] = set()
             for c in picked:
+                name = c.get("name") or str(c.get("id"))
                 try:
                     files = fetch_course_files(s, c["id"])
                 except Exception as e:
-                    print(f"{c['name'][:30]:32} FAIL {type(e).__name__}: {e}",
+                    print(f"{str(name)[:30]:32} FAIL {type(e).__name__}: {e}",
                           file=sys.stderr)
                     continue
+                # Announcement attachments are a SEPARATE set from the Files tree
+                # — one term had 5 of these and 64 in the tree. A run that only
+                # walks the tree misses them entirely.
+                try:
+                    topics = fetch_announcements(s, c["id"])
+                    files = files + fetch_announcement_attachments(s, topics)
+                except Exception as e:
+                    print(f"  (announcement attachments skipped: "
+                          f"{type(e).__name__}: {e})", file=sys.stderr)
                 mb = sum(f["size"] or 0 for f in files) / 1048576
-                print(f"\n{c['name'][:40]} — {len(files)} 檔 {mb:.1f} MB", file=sys.stderr)
+                print(f"\n{str(name)[:40]} — {len(files)} 檔 {mb:.1f} MB", file=sys.stderr)
                 for f in files:
                     total += 1
                     size_mb = (f["size"] or 0) / 1048576
@@ -608,17 +626,13 @@ def main() -> int:
                             continue
                         # display_name is the human filename; `filename` is the
                         # storage name and looks like "1789962952_790__lecture_ch1.pdf".
-                        raw_name = str(f["name"] or f["filename"] or f["id"])
+                        raw_name = str(f.get("name") or f.get("filename") or f.get("id"))
                         safe = os.path.basename(raw_name).replace("/", "_")
                         safe = re.sub(r"[^\w.\-㐀-鿿]+", "_", safe).strip("_") or str(f["id"])
-                        # disambiguate a collision inside one folder
-                        if safe in used_names:
-                            stem, ext = os.path.splitext(safe)
-                            n = 2
-                            while f"{stem}_{n}{ext}" in used_names:
-                                n += 1
-                            safe = f"{stem}_{n}{ext}"
-                        used_names.add(safe)
+                        # No name-collision disambiguation is needed: dest embeds
+                        # the file's own id, so two files with the same display
+                        # name land in different directories. Renaming here would
+                        # invent a suffix the source never had.
                         dest = os.path.join(args.files_out, str(c["id"]), str(f["id"]), safe)
                         magic = b"%PDF-" if "pdf" in (f["content_type"] or "") else None
                         res = download_file(s, f["url"], dest, magic)

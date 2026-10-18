@@ -142,8 +142,8 @@ class TestCredentialFilePermissions(unittest.TestCase):
 
 class TestFindCourse(unittest.TestCase):
     COURSES = [
-        {"id": 1, "name": "<course name>"},
-        {"id": 2, "name": "<course name>"},
+        {"id": 1, "name": "Course Alpha"},
+        {"id": 2, "name": "Course Beta"},
         {"id": 3, "name": None},
     ]
 
@@ -151,10 +151,10 @@ class TestFindCourse(unittest.TestCase):
         self.assertEqual(ntu_fetch.find_course(self.COURSES, "2")["id"], 2)
 
     def test_match_by_name_substring(self):
-        self.assertEqual(ntu_fetch.find_course(self.COURSES, "fluid")["id"], 2)
+        self.assertEqual(ntu_fetch.find_course(self.COURSES, "beta")["id"], 2)
 
     def test_case_insensitive(self):
-        self.assertEqual(ntu_fetch.find_course(self.COURSES, "MATHEMATICS")["id"], 1)
+        self.assertEqual(ntu_fetch.find_course(self.COURSES, "ALPHA")["id"], 1)
 
     def test_no_match_returns_none(self):
         self.assertIsNone(ntu_fetch.find_course(self.COURSES, "nonexistent"))
@@ -167,7 +167,8 @@ class TestNoWriteMethods(unittest.TestCase):
     def test_fetch_layer_has_no_write_verbs(self):
         import re
 
-        src = open(ntu_fetch.__file__ or "", encoding="utf-8").read()
+        with open(ntu_fetch.__file__ or "", encoding="utf-8") as fh:
+            src = fh.read()
         # Everything after the login function is the fetch layer.
         fetch_layer = src.split("def fetch_courses", 1)[1]
         offenders = re.findall(r"\.(post|put|patch|delete|request)\(", fetch_layer)
@@ -242,6 +243,147 @@ class TestAbsActionRefusesOffOrigin(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             ntu_fetch._abs_action(form, self.BASE)
         self.assertIn("off-origin", str(ctx.exception))
+
+
+class _FakeResponse:
+    def __init__(self, payload, status=200):
+        self.status_code = status
+        self.text = json.dumps(payload)
+        self.content = self.text.encode()
+
+
+class _FakeSession:
+    """Stands in for requests.Session. Every URL maps to canned payloads so the
+    recursion can be driven without touching the network."""
+
+    def __init__(self, routes):
+        self.routes = routes
+        self.calls = []
+
+    def get(self, url, **kw):
+        self.calls.append(url)
+        if url not in self.routes:
+            return _FakeResponse([], status=404)
+        return _FakeResponse(self.routes[url])
+
+
+class TestFetchCourseFilesDedupes(unittest.TestCase):
+    """THE bug this repo used to ship.
+
+    /courses/{id}/folders returns the course root AND its subfolders in one
+    response. A recursive walk therefore visits `unfiled` twice and every file
+    in it twice. Measured on a real term: 110 files reported, 64 real. Any diff
+    against local copies built on the uncorrected count is wrong in both
+    directions. Dedupe by file id."""
+
+    ROUTES = {
+        "https://cool.ntu.edu.tw/api/v1/courses/1/folders": [
+            {"id": 10, "full_name": "course files", "context_id": 1,
+             "files_url": "https://x/files/root", "folders_url": "https://x/sub/root"},
+            {"id": 11, "full_name": "course files/unfiled", "context_id": 1,
+             "files_url": "https://x/files/unfiled", "folders_url": "https://x/sub/unfiled"},
+        ],
+        "https://x/files/root": [],
+        "https://x/sub/root": [
+            {"id": 11, "full_name": "course files/unfiled", "context_id": 1,
+             "files_url": "https://x/files/unfiled", "folders_url": "https://x/sub/unfiled"},
+        ],
+        "https://x/files/unfiled": [
+            {"id": 101, "display_name": "a.pdf", "filename": "1_a.pdf", "size": 10,
+             "content-type": "application/pdf", "url": "https://x/d/101", "uuid": "u1",
+             "locked": False, "created_at": "2026-01-01"},
+            {"id": 102, "display_name": "b.pdf", "filename": "2_b.pdf", "size": 20,
+             "content-type": "application/pdf", "url": "https://x/d/102", "uuid": "u2",
+             "locked": False, "created_at": "2026-01-01"},
+        ],
+        "https://x/sub/unfiled": [],
+    }
+
+    def test_same_file_returned_twice_is_returned_once(self):
+        s = _FakeSession(self.ROUTES)
+        out = ntu_fetch.fetch_course_files(s, 1)
+        ids = [f["id"] for f in out]
+        self.assertEqual(len(ids), len(set(ids)), f"duplicate ids leaked: {ids}")
+
+    def test_expected_files_present(self):
+        s = _FakeSession(self.ROUTES)
+        out = ntu_fetch.fetch_course_files(s, 1)
+        self.assertEqual(sorted(f["id"] for f in out), [101, 102])
+
+    def test_count_is_not_inflated(self):
+        s = _FakeSession(self.ROUTES)
+        out = ntu_fetch.fetch_course_files(s, 1)
+        self.assertEqual(len(out), 2, "the naive walk would report 4 here")
+
+    def test_folder_name_is_preserved(self):
+        s = _FakeSession(self.ROUTES)
+        out = ntu_fetch.fetch_course_files(s, 1)
+        self.assertTrue(all(f["folder"] == "course files/unfiled" for f in out))
+
+    def test_display_name_beats_storage_filename(self):
+        s = _FakeSession(self.ROUTES)
+        out = ntu_fetch.fetch_course_files(s, 1)
+        by_id = {f["id"]: f for f in out}
+        self.assertEqual(by_id[101]["name"], "a.pdf")
+        self.assertEqual(by_id[101]["filename"], "1_a.pdf")
+
+
+class TestFetchAnnouncementAttachments(unittest.TestCase):
+    """Announcement attachments are a SEPARATE set from the Files tree — one
+    term had 5 of these and 64 in the tree. A run that only walks the tree
+    misses them. This function must stay wired into the CLI."""
+
+    def test_collects_the_attachments_array(self):
+        topics = [{
+            "title": "homework 1",
+            "attachments": [
+                {"id": 7, "display_name": "hw1.pdf", "filename": "1_hw1.pdf",
+                 "size": 123, "content-type": "application/pdf",
+                 "url": "https://x/d/7", "uuid": "u7", "locked": False},
+            ],
+        }]
+        s = _FakeSession({})
+        out = ntu_fetch.fetch_announcement_attachments(s, topics)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["id"], 7)
+        self.assertEqual(out[0]["name"], "hw1.pdf")
+
+    def test_no_attachments_yields_empty(self):
+        self.assertEqual(
+            ntu_fetch.fetch_announcement_attachments(_FakeSession({}),
+                                                    [{"title": "t", "attachments": []}]),
+            [])
+
+    def test_missing_attachments_key_is_not_a_crash(self):
+        self.assertEqual(
+            ntu_fetch.fetch_announcement_attachments(_FakeSession({}), [{"title": "t"}]),
+            [])
+
+    def test_attachments_are_labeled_as_such(self):
+        out = ntu_fetch.fetch_announcement_attachments(
+            _FakeSession({}), [{"title": "notice", "attachments": [
+                {"id": 1, "display_name": "x.pdf", "url": "https://x/1"}]}])
+        self.assertTrue(out[0]["folder"].startswith("announcement:"))
+
+
+class TestSourceHasNoPersonalCourseNames(unittest.TestCase):
+    """The repo documented its traps using one account's real roster. That is
+    a leak and it is not needed to make the point."""
+
+    def test_no_real_course_names_in_sources(self):
+        import re
+
+        names = [
+            "<course name>", "<course name>", "<course name>",
+            "<course name>", "<course name>", "<course name>",
+            "<course name>", "<course name>", "<course name>", "<course name>", "<course name>", "<course name>", "<course name>",
+            "<non-term course>", "ESOE",
+        ]
+        for path in (ntu_fetch.__file__ or "",):
+            with open(path, encoding="utf-8") as fh:
+                src = fh.read()
+            for n in names:
+                self.assertNotIn(n, src, f"course name {n!r} found in {path}")
 
 
 if __name__ == "__main__":
