@@ -168,11 +168,16 @@ a password.**
 
 ## Workflow
 
+Installed as a command it is `ntu-cool`; uninstalled it is
+`python3 scripts/ntu_fetch.py`. Same tool, same flags, interchangeable. The
+offline tests gate is `python3 -m unittest discover -s tests` and it needs no
+credentials — run it before trusting any change.
+
 **1. Check what is already on disk before fetching anything.**
 
 ```bash
-find ~/services/shared-vault/LLM-Wiki/raw -iname '*hw*' -o -iname '*cool*' | head
-ls ~/.hermes/attachments/
+find ~/notes/raw -iname '*hw*' -o -iname '*cool*' | head
+ls ~/attachments/
 ```
 
 A previous session may already have captured it. Fetching again wastes a login round-trip
@@ -195,7 +200,7 @@ moved. In that case stop and report instead of debugging auth.
 python3 scripts/ntu_fetch.py --all-courses \
     --cred-file ~/.ntu-creds.json \
     --since 2026-09-01 \
-    --out ~/services/shared-vault/LLM-Wiki/raw/
+    --out ~/notes/raw/
 ```
 
 `--cred-file` is the working path, not env vars: an env var exported in the user's own
@@ -207,8 +212,7 @@ finding (the course exists, it just has no announcements this term), not a fetch
 
 `--since` filters on `posted_at`, not on the term field. A course with `term: null`
 still returns whatever it has. Output is a dated markdown file, one section per
-announcement, raw-first per the LLM-Wiki convention. Then summarise into `summaries/`
-and update `index.md` + `log.md`.
+announcement, raw-first. Then summarise it into your own notes.
 
 **4. List the course FILES before anything else that touches content.**
 
@@ -308,35 +312,36 @@ python3 scripts/ntu_fetch.py --download-files --course <COURSE> \\
 decide what enters the vault — per § Filing the result, downloading into a vault is not
 a unilateral call.
 
-**Check what is already local before pulling anything.** `~/.hermes/attachments/` and the
-vault's `raw/assets/` often already hold the same lecture notes and homework sets that
+**Check what is already local before pulling anything.** Your downloads folder and your
+notes vault often already hold the same lecture notes and homework sets that
 Cool carries. Diff the manifest's filenames against local files first; the useful output
 of a sweep is the list of files Cool has that you do **not**.
 
 ## Filing the result — announcements become inbox tasks, never `next/`
 
 Fetched announcements contain deadlines, and it is tempting to convert each one into a
-task. **Do not.** Under the rule in `personal-os` § HARD RULE (2026-10-18), a task the
-agent inferred from a source it read — a deadline in an announcement, a 「hard blocker」
-— goes to `wiki/tasks/inbox/` with `reviewed_by_human: false`, a `推論依據` and a
-`要審核的問題`. Only work the user named or approved goes to `next/`.
+task. **Do not.** Under the rule this repository recommends: a task the agent inferred from a source it
+read — a deadline in an announcement, a 「hard blocker」 — goes to an **inbox** with
+`reviewed_by_human: false` plus the reasoning and the questions needing a ruling.
+Only work the user named or approved goes to your active task list.
 
 The split that makes this cheap:
 
 | destination | what lands there |
 |---|---|
-| `LLM-Wiki/raw/ntu-cool-<slug>-<date>.md` | the announcement text — one file per course, all of it, unfiltered |
-| `Personal-OS/raw/external/<date>-ntu-cool-<slug>.md` | the same file again, because a deadline in it is an action item and must be readable from the vault that holds tasks |
-| `Personal-OS/wiki/tasks/inbox/` | one task per inferred deadline, awaiting his ruling |
+| `notes/raw/ntu-cool-<slug>-<date>.md` | the announcement text — one file per course, all of it, unfiltered |
+| `tasks/raw/external/<date>-ntu-cool-<slug>.md` | the same file again, because a deadline in it is an action item and must be readable from the vault that holds tasks |
+| `tasks/wiki/tasks/inbox/` | one task per inferred deadline, awaiting a ruling |
 
-The duplicated raw file is deliberate, not a mistake: LLM-Wiki is the study record,
-Personal-OS is the action record, and a source that matters to both belongs to both.
+The duplicated raw file is deliberate, not a mistake: the study vault is the study
+record and the task vault is the action record. A source that matters to both belongs
+to both.
 
 Two facts to carry into the report rather than into a task body as settled:
 
 **a course with zero announcements this term may still have all its material**, in the
-Files tree and on disk already — check `LLM-Wiki/wiki/overviews/` and
-`~/.hermes/attachments/` before treating a missing announcement as a gap. A task whose
+Files tree and on disk already — check your notes and your downloads before treating a
+missing announcement as a gap. A task whose
 stated premise is 「unknown」 when the answer was already on disk is worse than no task.
 
 **a deadline in an announcement is not automatically an action item.** Same reasoning,
