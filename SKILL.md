@@ -43,17 +43,25 @@ Do not merge them.
 | announcement attachments | **verified** — 5 more, separate from the Files tree |
 
 Verified against the live site: the API returned 10 courses whose newest announcement
-was three months stale, omitted three current-term courses including <course name> (<id>),
+was three months stale, omitted three current-term courses including one of them
+the author's core maths course,
 and included three dead ones as `{"id": <id>, "access_restricted_by_date": true}` with
 `name: null`. `fetch_courses()` therefore parses the home page instead, which yields
 exactly the current roster:
 
 ```
-<id> <course name> <ESOE code>      <id> <course name> <ESOE code>
-<id> <course name>   <ESOE code>      <id> <course name>   <ESOE code>
-<id> <course name> <ESOE code>      <id> <course name>   <ESOE code>
-<id> <non-term course>          (term=null)
+APIsaid    <id> <current course>   <id> <current course>
+           <id> <current course>   <id> <current course>
+           <id> <current course>   <id> <current course>
+           <id> <non-term course>          (term=null)
+           + 3 rows {name: null, access_restricted_by_date: true}
+
+Homepage   the same 7 courses, term "<term>"  ← correct
+API        the 3 dead rows, and zero of the current ones
 ```
+
+Course names and ids are elided: they are one account's term, and yours will
+differ. That difference *is* the trap — never assume the two lists agree.
 
 The 401 is a *good* sign: the endpoint exists and gates properly. It proves nothing about
 the authenticated response shape.
@@ -62,9 +70,9 @@ the authenticated response shape.
 
 **This endpoint returns courses you have EVER been associated with, and it hides the
 current term's courses.** Verified by authenticated fetch: it returned 10 courses, of
-which **zero** were the current term's — it listed last term's <course name>, <course name>,
-工程及海工概論, 食品安全, plus three rows with `name: null`, and only one course
-(<course name>) that happened to be current.
+which **zero** were the current term's — it listed last term's engineering
+courses, a drawing course, two general-education electives, plus three rows with
+`name: null`, and only one course that happened to be current.
 
 The current-term courses are in the **homepage HTML**, not the API:
 
@@ -76,7 +84,7 @@ ids = re.findall(r'"longName":"([^"]+)".*?"href":"/courses/(\d+)".*?"term":("[^"
 
 `"term"` carries the academic term (`<term>`), which is the field that makes
 current-term filtering reliable rather than date-guessing. Courses with
-`"term": null` are non-term entries (e.g. <non-term course>).
+`"term": null` are non-term entries (extracurricular or non-credit courses).
 
 `access_restricted_by_date: true` on a course row means the course has ended and its
 announcements return 403. That is a normal state, not an error — skip the course and
@@ -205,7 +213,7 @@ and update `index.md` + `log.md`.
 **4. List the course FILES before anything else that touches content.**
 
 ```bash
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 ```
 
 Do this whenever the question is about *what the course published*, not merely what it
@@ -291,8 +299,8 @@ unusable on the strength of one extraction path.
 ### Verify the list before downloading 114 MB
 
 ```bash
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
-python3 scripts/ntu_fetch.py --download-files --course <course name> \\
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --download-files --course <COURSE> \\
     --cred-file ~/.ntu-creds.json --files-out ~/somewhere --max-mb 20
 ```
 

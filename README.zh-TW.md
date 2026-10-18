@@ -10,7 +10,7 @@
 python3 scripts/ntu_fetch.py --probe
 
 # 我這學期有哪些課
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 ```
 
 > English version: [README.md](README.md)
@@ -90,7 +90,7 @@ echo '{"ntu_user":"bXXXXXXXX","ntu_pass":"..."}' > ~/.ntu-creds.json
 
 ```
 API 回報：       10 門課，最新公告 2026-10-13，最舊 2025-09-05
-                 → 漏掉 3 門本學期課程，包含 <course name>
+                 → 漏掉 3 門本學期課程，其中一門是你的主修數學課
                  → 多 3 門已結束的課，以 {"access_restricted_by_date": true} 形式出現
 
 登入後首頁回報：  7 門課，學期 "<term>"  ← 這個才對
@@ -136,23 +136,23 @@ folder 物件自帶自己的 URL：**讀欄位**。
 
 ```bash
 # 本學期課表
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 
 # 單一課程的公告，直接印到畫面上
-python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --stdout
+python3 scripts/ntu_fetch.py --course <COURSE> --since 2026-09-01 --stdout
 
 # 寫成 markdown 進筆記目錄
-python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --out ./captures/
+python3 scripts/ntu_fetch.py --course <COURSE> --since 2026-09-01 --out ./captures/
 ```
 
 ### 課程檔案
 
 ```bash
 # 列出 Files 樹裡的全部內容
-python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 
 # 下載，跳過超過 20 MB 的檔案
-python3 scripts/ntu_fetch.py --download-files --course <course name> \
+python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
     --cred-file ~/.ntu-creds.json --files-out ./files/ --max-mb 20
 ```
 
