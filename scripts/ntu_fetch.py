@@ -236,13 +236,47 @@ def find_course(courses: list[dict], needle: str) -> dict | None:
 
 
 def fetch_announcements(s: requests.Session, course_id) -> list[dict]:
-    r = s.get(f"{API}/courses/{course_id}/discussion_topics",
-              params={"only_announcements": "true", "per_page": 1000}, timeout=30)
-    r.raise_for_status()
-    return parse_json_loose(r.text)
+    return _paged_get(s, f"{API}/courses/{course_id}/discussion_topics",
+                      params={"only_announcements": "true"}, timeout=30)
 
 
 # ---------------------------------------------------------------- course files
+
+def _paged_get(s: requests.Session, url: str, params: dict | None = None,
+               timeout: int = 25) -> list:
+    """Every page of a Canvas list endpoint, not just the first.
+
+    Canvas caps `per_page` and the bare call defaults to 10. Measured 2026-10-18:
+    one course's folder held 29 files and the unparameterised call returned 10 —
+    19 files silently missing, with no error and no empty-looking tail. 27 of 91
+    files across a term went missing that way.
+
+    Follow `Link: <...>; rel="next"` rather than assuming a page count. That is
+    the only pagination contract the API actually honours.
+    """
+    out: list = []
+    p = dict(params or {})
+    p["per_page"] = 100
+    nxt: str | None = url
+    seen_pages = 0
+    while nxt:
+        seen_pages += 1
+        if seen_pages > 500:          # runaway guard, not a limit we expect to hit
+            raise RuntimeError(f"pagination did not terminate at {url}")
+        r = s.get(nxt, params=p if nxt == url else None, timeout=timeout)
+        if r.status_code != 200:
+            break
+        chunk = parse_json_loose(r.text)
+        if not isinstance(chunk, list):
+            return chunk
+        out.extend(chunk)
+        p = {}
+        nxt = None
+        for part in r.headers.get("Link", "").split(","):
+            if 'rel="next"' in part:
+                nxt = part[part.find("<") + 1:part.find(">")] or None
+    return out
+
 
 def fetch_course_files(s: requests.Session, course_id) -> list[dict]:
     """Every file in the course's Files section, recursively.
@@ -268,44 +302,68 @@ def fetch_course_files(s: requests.Session, course_id) -> list[dict]:
     credential-bearing string, never log it.
     """
     out: list[dict] = []
-    seen_ids: set = set()
+    seen_files: set = set()
+    seen_folders: set = set()
 
     def walk(folder: dict) -> None:
-        rf = s.get(folder["files_url"], timeout=25)
-        if rf.status_code == 200:
-            for f in parse_json_loose(rf.text):
-                # /folders lists the course root AND its subfolders in one
-                # response, so a recursive walk visits `unfiled` twice and every
-                # file in it twice. Dedupe by file id before anything is counted
-                # or downloaded — measured 2026-10-18: 110 reported, 64 real.
-                fid = f.get("id")
-                if fid in seen_ids:
-                    continue
-                seen_ids.add(fid)
-                out.append({
-                    "folder": folder.get("full_name", ""),
-                    "id": f.get("id"),
-                    "name": f.get("display_name") or f.get("filename"),
-                    "filename": f.get("filename"),
-                    "size": f.get("size"),
-                    "content_type": f.get("content-type"),
-                    "url": f.get("url"),
-                    "uuid": f.get("uuid"),
-                    "locked": bool(f.get("locked")),
-                    "created_at": f.get("created_at"),
-                })
-        rs = s.get(folder["folders_url"], timeout=25)
-        if rs.status_code == 200:
-            for sub in parse_json_loose(rs.text):
-                walk(sub)
+        fid = folder.get("id")
+        if fid in seen_folders:
+            return
+        seen_folders.add(fid)
 
-    r = s.get(f"{API}/courses/{course_id}/folders", timeout=25)
-    if r.status_code != 200:
+        for f in _paged_get(s, folder["files_url"]):
+            # Belt and braces: every folder is walked exactly once above, so this
+            # should never fire — but a folder reachable by two paths would cost
+            # a silent duplicate, and a duplicate reads as a real file.
+            if f.get("id") in seen_files:
+                continue
+            seen_files.add(f.get("id"))
+            out.append({
+                "folder": folder.get("full_name", ""),
+                "id": f.get("id"),
+                "name": f.get("display_name") or f.get("filename"),
+                "filename": f.get("filename"),
+                "size": f.get("size"),
+                "content_type": f.get("content-type"),
+                "url": f.get("url"),
+                "uuid": f.get("uuid"),
+                "locked": bool(f.get("locked")),
+                "created_at": f.get("created_at"),
+            })
+        for sub in _paged_get(s, folder["folders_url"]):
+            walk(sub)
+
+    # Entry point: the ROOT, not the flat folder list.
+    #
+    # GET /courses/{id}/folders returns a flat enumeration of folders at every
+    # depth, not a tree. Iterating it AND recursing folders_url walks each
+    # non-root folder twice (three times when its parent is listed too), which
+    # inflates the count — 110 where 64 are real. Walking only the root gives
+    # one visit per folder and nothing else has to be corrected afterwards.
+    roots: list[dict] = []
+    rr = s.get(f"{API}/courses/{course_id}/folders/root", timeout=25)
+    if rr.status_code == 200:
+        try:
+            payload = parse_json_loose(rr.text)
+        except Exception:
+            payload = None
+        # Only a dict is a folder. An empty body or a list here is not a root —
+        # treat it as absent and fall back rather than crashing in walk().
+        if isinstance(payload, dict) and payload.get("id") is not None:
+            roots = [payload]
+    if not roots:
+        # /folders/root answers 403 on at least one non-credit course
+        # ("使用者無權執行該操作") while the list endpoint still works. Fall back to
+        # the list and keep only the real roots — those with no parent.
+        flat = _paged_get(s, f"{API}/courses/{course_id}/folders")
+        roots = [f for f in flat if f.get("parent_folder_id") is None]
+    if not roots:
         raise RuntimeError(
-            f"course {course_id} has no readable folders endpoint "
-            f"(HTTP {r.status_code}) — announcements may still be fetchable")
-    for folder in parse_json_loose(r.text):
-        walk(folder)
+            f"course {course_id}: no root folder reachable — /folders/root did not "
+            f"answer and /folders listed no parentless folder. Announcements may "
+            f"still be fetchable.")
+    for root in roots:
+        walk(root)
     return out
 
 

@@ -39,7 +39,7 @@ Do not merge them.
 | `json.loads(r.text[9:])` slice | **verified suspect** — our parser handles prefixes correctly |
 | Ceiba reachable from this host | **NO** — connection timeout, see below |
 | Ceiba table-parsing paths | **UNVERIFIED AND UNREACHABLE** — moot until reachability is restored |
-| course FILES (handouts, worksheets, solutions) | **verified** — `fetch_course_files()`, 110 files / 114 MB across the current term |
+| course FILES (handouts, worksheets, solutions) | **verified** — `fetch_course_files()`, 91 files across the current term, 96 with announcement attachments |
 | announcement attachments | **verified** — 5 more, separate from the Files tree |
 
 Verified against the live site: the API returned 10 courses whose newest announcement
@@ -82,7 +82,7 @@ r = session.get("https://cool.ntu.edu.tw/", timeout=25)
 ids = re.findall(r'"longName":"([^"]+)".*?"href":"/courses/(\d+)".*?"term":("[^"]*"|null)', r.text)
 ```
 
-`"term"` carries the academic term (`<term>`), which is the field that makes
+`"term"` carries the academic term (e.g. `<term>`), which is the field that makes
 current-term filtering reliable rather than date-guessing. Courses with
 `"term": null` are non-term entries (extracurricular or non-credit courses).
 
@@ -240,7 +240,7 @@ literally the word "attached" is **not** a missing-attachment case to report; it
 normal shape, and the files are fully retrievable.
 
 Measured on the current term: **20 announcement bodies carried 6,658 characters and zero
-file links, while the course Files tree held 110 files / 114 MB.** Reporting 「this course
+file links, while the course Files tree held 91 files.** Reporting 「this course
 has no attachments」 off the announcement sweep alone reads as complete and misses the
 worksheets, the homework sets, the solutions, and the quiz scope documents.
 
@@ -285,12 +285,22 @@ it in a report, never commit it.
 `filename` is the storage name and reads `<TIMESTAMP>_<ID>__<ORIGINAL-NAME>.pdf`. Two files
 named identically inside one folder get a `_2`, `_3` suffix rather than overwriting.
 
-**Dedupe by file `id` before you count anything.** `/courses/{id}/folders` returns the
-course root *and* its subfolders in one list, so a recursive walk visits `unfiled` twice
-and every file inside it twice. Measured 2026-10-18: the naive walk reported **110 files
-for <term>; the truth is 64.** Any diff against local copies built on the uncorrected
-count is wrong in both directions — it invents duplicates that do not exist and hides
-the ones that do.
+**Enter through the root, and paginate.** Three separate things go wrong if you do not:
+
+`/courses/{id}/folders` returns a **flat list** of folders at every depth, not a tree.
+Iterating it *and* recursing `folders_url` visits each non-root folder twice — three
+times when its parent is listed too. Measured 2026-10-18: the naive walk reported
+**110 files where 91 are real**.
+
+Every list endpoint is **paginated at 10 by default**. This one actually loses data: a
+folder holding 29 files answers 10, with no error and no empty-looking tail. Across a
+term that was **27 of 91 files silently missing**. Follow `Link: rel="next"` — do not
+raise `per_page` and assume it took, because the API caps that parameter.
+
+`fetch_course_files()` therefore enters at `/folders/root` (falling back to the
+parentless entries of `/folders`, since `/folders/root` answers **403** on at least one
+non-credit course), follows `Link` in both directions, and dedupes by file `id` as a
+last resort. Tests fail if any of the three is removed.
 
 ### Some of these files have no text layer
 
@@ -300,7 +310,7 @@ extraction reporting nothing means the layer is empty, **not** that the content 
 absent — render to PNG at ~140 dpi and read the image. Never file such a PDF as
 unusable on the strength of one extraction path.
 
-### Verify the list before downloading 114 MB
+### Verify the list before downloading the whole term
 
 ```bash
 python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
@@ -366,7 +376,13 @@ need, and it pulls in an ORM the pinned versions cannot support on this interpre
 
 - ❌ Don't report 「no attachments」 from an announcement sweep. The body never carries
   the file list; the Files tree does. On the current term that is the difference between
-  0 files and 110.
+  0 files and 96 (91 in the tree, 5 bound to announcements).
+- ❌ Don't walk `/courses/{id}/folders` and recurse. It is a flat list at every depth,
+  so every non-root folder gets counted two or three times.
+- ❌ Don't assume one page is the whole list. Canvas defaults to `per_page=10` and caps
+  the parameter — 27 of 91 files were missing that way, with nothing to notice.
+- ❌ Don't rely on `/folders/root` alone. It 403s on a non-credit course while the list
+  endpoint still answers; falling back to the parentless entries keeps the course.
 - ❌ Don't compose API paths for the Files tree. `/api/v1/courses/{id}/files` is the
   obvious guess and it 404s. Read `files_url` / `folders_url` off the folder objects.
 - ❌ Don't trust a download's status code. An expired signed URL returns 200 with the
