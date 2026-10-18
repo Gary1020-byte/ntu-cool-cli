@@ -44,17 +44,39 @@ TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 
 ## 安裝
 
+當成指令用 —— 裝完 PATH 上會有 `ntu-cool`：
+
 ```bash
 git clone <this-repo>
 cd ntu-cool-announcements-skill
-python3 -m pip install --user requests
+pipx install .          # 或：uv tool install .  /  python3 -m pip install --user .
+ntu-cool --probe
 ```
 
-需要 Python 3.9+，以及一個裝了 `requests` 的 Python。驗證：
+模組叫 `ntu_fetch`，指令叫 `ntu-cool`，兩者做完全一樣的事 ——
+`ntu-cool --help` 跟 `python3 scripts/ntu_fetch.py --help` 輸出相同。
+看你要哪個；那個 script 根本不需要安裝就能跑。
+
+需要 Python 3.9+ 與 `requests`。驗證：
 
 ```bash
-python3 scripts/ntu_fetch.py --probe
+ntu-cool --probe
 ```
+
+### 測試
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+31 個離線測試，不連網路、不用帳密。涵蓋 JSON 前綴處理、
+不用 BeautifulSoup 的 HTML 表單解析、憑證檔權限防護，
+以及最關鍵的一項 —— 藏在 `<head>` 的誘捕表單**永遠不會變成 POST 目標**。
+
+### 備註
+
+console script 是個薄薄的 wrapper：`ntu_fetch:main`，`main()` 回傳 exit code。
+import 這個模組沒有任何副作用，所以測試可以 import 它而不會登入或連網。
 
 > **用你真正會跑的那個 interpreter 測試。** venv 的 Python 和系統 Python 有各自獨立的
 > `site-packages`。「import 失敗」的問題回報，有一半其實是在講錯的 interpreter。
@@ -214,6 +236,8 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 ```
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
+pyproject.toml                        讓 `ntu-cool` 變成可安裝指令
+tests/test_ntu_fetch.py               31 個離線測試，不連網路
 ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
 references/upstream-findings.md       為什麼沒有直接沿用那份 2019 的程式
 references/ceiba-unreachable.md       可達性對照實驗
