@@ -69,9 +69,12 @@ ntu-cool --probe
 python3 -m unittest discover -s tests -v
 ```
 
-41 個離線測試，不連網路、不用帳密。涵蓋 JSON 前綴處理、
+52 個離線測試，不連網路、不用帳密。涵蓋 JSON 前綴處理、
 不用 BeautifulSoup 的 HTML 表單解析、憑證檔權限防護，
 以及最關鍵的一項 —— 藏在 `<head>` 的誘捕表單**永遠不會變成 POST 目標**。
+
+有兩個 test class 守著那個默默漏抓檔案的 bug：一個讓 `_paged_get` 走過多頁的 Link
+鏈，一個證明遞迴是從根進入，而且在 `/folders/root` 回 403 時仍能運作。
 
 ### 備註
 
@@ -131,32 +134,49 @@ API 回報：       10 門課，最新公告 2026-10-13，最舊 2025-09-05
 一學期實測：
 
 ```
-20 則公告正文   6,658 字元   0 個檔案連結
-課程 Files 樹   64 個檔案    91 MB
+20 則公告正文    2,041 字元   0 個檔案連結
+課程 Files 樹    91 個檔案
+公告附件          5 個檔案    <- 第三組
 ```
 
 一則正文全文只有「attached」兩個字的公告，**不是**要回報「附件抓不到」的情況 ——
 那是正常形狀，而且檔案完全抓得到。只讀公告就回報「這門課沒有附件」，
 聽起來像個完整答案，實際上漏掉每一份習題。
 
-### 坑三：檔案路徑要從物件裡讀，不要自己拼
+### 坑三：從根進入、跟著 `Link` —— 三個不同的陷阱
 
 ```
-GET /api/v1/courses/{id}/folders    → folder 物件
-folder["files_url"]                 → 該資料夾裡的檔案
-folder["folders_url"]               → 子資料夾；遞迴
+GET /api/v1/courses/{id}/folders/root   → 根資料夾              <- 從這裡進
+folder["files_url"]                     → 該資料夾裡的檔案       (有分頁)
+folder["folders_url"]                   → 子資料夾；遞迴         (有分頁)
 ```
 
-猜了六個看起來很合理的路徑，全部 404 或 400 —— 包括
-`/api/v1/courses/{id}/files`，那個看起來最對，而且是死的。
-folder 物件自帶自己的 URL：**讀欄位**。
+**(a) URL 要從物件的欄位讀。** 猜了六個看起來很合理的路徑，全部 404 或 400 ——
+包括 `/api/v1/courses/{id}/files`，那個看起來最對，而且是死的。
 
-數任何東西之前先依 file `id` 去重。`/folders` 會在同一個清單裡同時回傳課程根資料夾
-和它的子資料夾，所以遞迴寫得太直覺的話，會數出**110 個檔案，實際只有 64 個**。
-`fetch_course_files()` 現在有做這件事；曾經有一版沒做，每個重複都回報了。
-有一個測試會在它被拿掉時失敗。
+**(b) `/folders` 是平清單，不是樹。** 它列出**所有深度**的資料夾。
+迭代它**又**遞迴 `folders_url`，每個非根資料夾就會被走兩次 ——
+若它的父資料夾也在清單裡，是三次。直覺的寫法報出**110 個檔案，實際只取得到 64 個**。
+改成只從根進入。
 
-公告附件是**第三組**，和前兩者都不同：某學期有 5 個，Files 樹有 64 個。
+**(c) 每個 list endpoint 預設分頁 10。** 這個才是真正丟資料的陷阱：
+一個裝 29 個檔案的資料夾只回傳 10 個，沒有錯誤、沒有看起來空的尾巴。
+一學期實測 —— **91 個檔案裡默默少掉 27 個**。
+
+```
+Link header 顯示:  <...>; rel="next", <...>; rel="last"
+裸請求:            page=1&per_page=10
+```
+
+**跟著 `Link: rel="next"`。** 不要用「調大 per_page」來修 ——
+API 會把那個參數封頂，而 Link header 是它唯一遵守的分頁契約。
+
+`fetch_course_files()` 從 `/folders/root` 進入（`/folders` 裡 `parent_folder_id`
+為 null 的那幾個作為備援，因為 `/folders/root` 在至少一門非學分課上回 **403**），
+兩個方向都跟分頁，最後依 file `id` 去重當最後防線。
+有測試會在三者任何一個被移除時失敗。
+
+公告附件是**第三組**，和前兩者都不同：某學期有 5 個，Files 樹有 91 個。
 `--list-files` 和 `--download-files` 兩組都會收。
 
 ---
@@ -199,7 +219,8 @@ python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
 | NTU Cool 的 endpoint 還在 | 已驗證 —— 回 401 + 有結構的 body，不是 404 |
 | SAML 登入流程正確 | 已對線上站台驗證過 |
 | `/api/v1/courses` 是本學期課表 | **假的** —— 見坑一 |
-| Files 樹的 endpoint 形狀 | 已驗證，列舉出 64 個檔案 |
+| Files 樹的 endpoint 形狀 | 已驗證，一學期列舉出 91 個檔案 |
+| 沒有默默漏抓 | 已驗證 —— 分頁靠 `Link` 一路跟到底 |
 | 下載到的真的 是 PDF | 每個檔案都做 magic bytes 檢查 |
 | Ceiba 可達性 | **依網路而異** —— 見 `references/ceiba-unreachable.md` |
 | Ceiba 爬蟲 | 沒實作；上游那個用位置參數解析表格的寫法未經驗證 |
@@ -242,7 +263,7 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
 pyproject.toml                        讓 `ntu-cool` 變成可安裝指令
-tests/test_ntu_fetch.py               41 個離線測試，不連網路
+tests/test_ntu_fetch.py               52 個離線測試，不連網路
 ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
 references/upstream-findings.md       為什麼沒有直接沿用那份 2019 的程式
 references/ceiba-unreachable.md       可達性對照實驗
