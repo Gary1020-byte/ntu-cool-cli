@@ -1,0 +1,42 @@
+# Credentials — never commit these
+*.json.env
+.env
+.env.*
+ntu-creds.json
+*creds*.json
+*credential*
+
+# Downloaded course material — large, and belongs on the machine, not in git
+files/
+downloads/
+captures/
+*.pdf
+*.pptx
+*.docx
+*.zip
+!references/**/*.pdf
+
+# Scratch and staging
+scratch/
+tmp/
+*.part
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.mypy_cache/
+.pytest_cache/
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# A signed Cool file URL is credential-bearing. If one ever lands here, it is a leak.
+# Never paste one into an issue, a commit message, or a log.
+*verifier=*

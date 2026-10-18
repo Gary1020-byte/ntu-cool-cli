@@ -1,0 +1,237 @@
+# ntu-course-announcements
+
+Fetch NTU Cool course announcements and course files from the command line.
+
+Built after reading [`brianbbsu/NTU-Announcement-Crawler`](https://github.com/brianbbsu/NTU-Announcement-Crawler)
+and finding it unusable on a modern Python. Reimplemented as a single
+~700-line script with **one** third-party dependency.
+
+```bash
+# no credentials — is the platform reachable?
+python3 scripts/ntu_fetch.py --probe
+
+# what courses am I taking this term?
+python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+```
+
+---
+
+## Why not just use the upstream crawler
+
+That project targets a 2019 interpreter and carries a Flask + SQLAlchemy + ORM
+service to answer a one-endpoint question. On Python 3.14 it fails twice:
+
+```
+ImportError: cannot import name 'Markup' from 'jinja2'          # Flask 1.0.2
+AttributeError: module 'sqlite3.dbapi2' has no attribute 'version_info'   # SQLAlchemy 1.3.8
+TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
+```
+
+Upgrading Flask cascades into the SQLAlchemy break, which cascades into a mapper-API
+removal. The total patch surface is one file and four lines — which tells you the
+service is the problem, not the pins.
+
+This script drops Flask, SQLAlchemy, and `beautifulsoup4` entirely. **The only
+third-party import is `requests`.** HTML parsing uses `html.parser` from the stdlib,
+because the two things needed from BeautifulSoup — "find a form, read its inputs"
+and "flatten visible text" — are twenty lines of `HTMLParser`.
+
+---
+
+## Install
+
+```bash
+git clone <this-repo>
+cd ntu-course-announcements
+python3 -m pip install --user requests
+```
+
+Requires Python 3.9+ and a system Python that has `requests`. Verify:
+
+```bash
+python3 scripts/ntu_fetch.py --probe
+```
+
+> **Test with the interpreter you will actually use.** A virtualenv's Python and the
+> system Python have separate `site-packages`. A bug report that says "the import
+> fails" is often a report about the wrong interpreter.
+> See `references/testing-and-interpreters.md`.
+
+---
+
+## Credentials
+
+Two platforms need your NTU account. **This tool never stores, requests, or prints a
+password.**
+
+Either export them for one shell:
+
+```bash
+export NTU_USER=bXXXXXXXX
+export NTU_PASS='...'
+```
+
+…or, better, keep them in a file the script will only read when it is mode `600`:
+
+```bash
+umask 077
+echo '{"ntu_user":"bXXXXXXXX","ntu_pass":"..."}' > ~/.ntu-creds.json
+```
+
+A group- or world-readable credential file is **refused** with the `chmod` command to
+fix it. Note that environment variables exported in one terminal are not visible to
+another — a credential file is what makes this script usable unattended (cron, etc.).
+
+---
+
+## The three traps this encodes
+
+### 1. `/api/v1/courses` is not your current course list
+
+It returns courses the account has **ever** been enrolled in.
+
+```
+API said:      10 courses, newest announcement 2026-10-13, oldest 2025-09-05
+               → omitted 3 current-term courses, including <course name>
+               → included 3 dead courses as {"access_restricted_by_date": true}
+
+Home page says: 7 courses, term "<term>"  ← correct
+```
+
+`fetch_courses()` parses the roster out of the home page's embedded JSON. The
+historical list is still reachable via `fetch_all_courses_historical()` when you want
+last term's exam schedule — never as the current roster.
+
+### 2. Course material is not in the announcement body
+
+Measured on one term:
+
+```
+20 announcement bodies   6,658 characters   0 file links
+course Files tree        64 files          91 MB
+```
+
+An announcement whose entire body is the word `attached` is **not** a missing-
+attachment case to report — it is the normal shape, and the files are fully
+retrievable. Reporting "this course has no attachments" after reading announcements
+alone reads as complete and misses every worksheet.
+
+### 3. Read the file URLs off the folder objects, never compose them
+
+```
+GET /api/v1/courses/{id}/folders    → folder objects
+folder["files_url"]                 → files in that folder
+folder["folders_url"]               → child folders; recurse
+```
+
+Six plausible spellings were tried and all return 404 or 400 — including
+`/api/v1/courses/{id}/files`, which looks obviously right and is dead. The folder
+objects carry their own URLs; read the fields.
+
+Dedupe by file `id` before counting anything. `/folders` returns the course root
+*and* its subfolders in one list, so a naive recursive walk reports **110 files where
+there are 64**.
+
+---
+
+## Usage
+
+### Announcements
+
+```bash
+# current term roster
+python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+
+# one course's announcements to stdout
+python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --stdout
+
+# write markdown into a notes directory
+python3 scripts/ntu_fetch.py --course <course name> --since 2026-09-01 --out ./captures/
+```
+
+### Course files
+
+```bash
+# list everything in the Files tree
+python3 scripts/ntu_fetch.py --list-files --course <course name> --cred-file ~/.ntu-creds.json
+
+# download, skipping anything over 20 MB
+python3 scripts/ntu_fetch.py --download-files --course <course name> \
+    --cred-file ~/.ntu-creds.json --files-out ./files/ --max-mb 20
+```
+
+Downloads land at `<files-out>/<course_id>/<file_id>/<filename>`, so two files with
+the same display name never collide.
+
+---
+
+## What the output is worth trusting
+
+| claim | status |
+|---|---|
+| NTU Cool endpoints still exist | verified — 401 + structured body, not 404 |
+| the SAML login sequence | verified against the live site |
+| `/api/v1/courses` as current roster | **false** — see trap 1 |
+| the Files-tree endpoint shape | verified, 64 files enumerated |
+| downloads are really PDFs | magic-checked per file |
+| Ceiba reachability | **varies by network** — see `references/ceiba-unreachable.md` |
+| Ceiba scraping | not implemented; the upstream positional table parser is unverified |
+
+**A download reporting `OK` has passed both checks.** Cool answers an expired signed
+URL with HTTP 200 carrying the login page, so status code alone proves nothing —
+the script sniffs for `<!DOCTYPE html` and verifies `%PDF-` against the declared
+content type.
+
+Signed file URLs are credential-bearing. The script never logs them; don't paste them
+anywhere.
+
+---
+
+## Many course PDFs have no text layer
+
+Of 10 files in one course, **9 had a zero-length text layer** — they are rasterised
+scans or vector drawings. That is not data loss. Render at ~160 dpi and read the
+image:
+
+```python
+import pymupdf
+d = pymupdf.open("worksheet.pdf")
+d[0].get_pixmap(dpi=160).save("page1.png")   # then read it
+```
+
+Never file a PDF as unusable on the strength of one extraction path.
+
+---
+
+## Ceiba
+
+`ceiba.ntu.edu.tw` is not implemented. On some networks it is unreachable (DNS
+resolves, three sibling NTU hosts answer in <150 ms, ceiba times out on connect).
+That is a network-access question, not a code one — see
+`references/ceiba-unreachable.md` for the control test that distinguishes them.
+
+---
+
+## Files
+
+```
+SKILL.md                              the rulebook: verification status, traps, workflow
+scripts/ntu_fetch.py                  the whole tool
+references/upstream-findings.md       why the 2019 crawler was not adopted as-is
+references/ceiba-unreachable.md       reachability control test
+references/testing-and-interpreters.md  the venv-vs-system-python trap
+```
+
+`SKILL.md` is written for an AI agent reading it before acting. It is readable by
+humans too, but its shape is "what is verified, what is not, what will bite you".
+
+---
+
+## Ethics and scope
+
+Read-only. Every request this script makes is a `GET` except the two login form
+submissions required to obtain a session — there is no upload, no write, no delete,
+and no course modification of any kind. It obeys the same rule as the account
+holder: fetch what you can already see by logging in, and nothing more.
+
+Use it against your own account.
