@@ -43,3 +43,8 @@ Thumbs.db
 # A signed Cool file URL is credential-bearing. If one ever lands here, it is a leak.
 # Never paste one into an issue, a commit message, or a log.
 *verifier=*
+
+# Personal capture output — it lists the author's own enrolled courses
+# (ids and names). It is material for the notes, not for the published repo.
+*announcements*.md
+*-announcements.md
