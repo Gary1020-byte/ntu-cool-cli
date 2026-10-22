@@ -14,6 +14,9 @@ import os
 import stat
 import sys
 import tempfile
+import pathlib
+import re
+import subprocess
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "scripts"))
@@ -373,24 +376,51 @@ class TestFetchAnnouncementAttachments(unittest.TestCase):
         self.assertTrue(out[0]["folder"].startswith("announcement:"))
 
 
-class TestSourceHasNoPersonalCourseNames(unittest.TestCase):
+class TestNoPersonalCourseRoster(unittest.TestCase):
     """The repo documented its traps using one account's real roster. That is
-    a leak and it is not needed to make the point."""
+    a leak and it is not needed to make the point.
 
-    def test_no_real_course_names_in_sources(self):
-        import re
+    The guard is written as a *pattern* check, never as a list of the real
+    course names and codes: such a list would itself be the leak, living in
+    this file. A pattern catches any course id or ESOE code, including ones
+    added after this test was written.
+    """
 
-        names = [
-            "<course name>", "<course name>", "<course name>",
-            "<course name>", "<course name>", "<course name>",
-            "<course name>", "<course name>", "<course name>", "<course name>", "<course name>", "<course name>", "<course name>",
-            "<non-term course>", "ESOE",
-        ]
-        for path in (ntu_fetch.__file__ or "",):
-            with open(path, encoding="utf-8") as fh:
-                src = fh.read()
-            for n in names:
-                self.assertNotIn(n, src, f"course name {n!r} found in {path}")
+    # NTU course ids are five digits starting with 5 or 6; ESOE course codes
+    # are ESOE followed by four digits.
+    ID_RE = re.compile(r"(?<![0-9])[56][0-9]{4}(?![0-9])")
+    CODE_RE = re.compile(r"ESOE[0-9]{4}")
+
+    def _repo_files(self):
+        """Files that would actually be published: the git-tracked set.
+
+        Deliberately not a filesystem walk -- a stray capture file sitting in
+        the working tree is personal material, not a publishable artifact, and
+        failing the build on it would be noise rather than a real guard.
+        """
+        root = pathlib.Path(ntu_fetch.__file__).resolve().parent.parent
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(root), "ls-files"],
+                capture_output=True, text=True, check=True).stdout.split()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return []
+        return [root / p for p in out
+                if pathlib.Path(p).suffix in {".md", ".py", ".toml", ".txt"}]
+
+    def test_no_ntu_course_ids_anywhere(self):
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            hit = self.ID_RE.search(src)
+            self.assertIsNone(
+                hit, f"NTU course id {hit.group(0) if hit else ''!r} in {path}")
+
+    def test_no_ese_course_codes_anywhere(self):
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            hit = self.CODE_RE.search(src)
+            self.assertIsNone(
+                hit, f"ESOE course code {hit.group(0) if hit else ''!r} in {path}")
 
 
 class _PagedResponse(_FakeResponse):
