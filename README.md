@@ -1,7 +1,9 @@
 # ntu-cool-cli
 
-Read-only command-line access to NTU Cool: course announcements, course
-files, CA handouts, and submission status.
+A CLI and an agent skill for read-only access to NTU Cool: course
+announcements, course files, CA handouts, and submission status.
+
+Use it from a shell, or install it as a skill and let an agent drive it.
 
 > 中文版: [README.zh-TW.md](README.zh-TW.md)
 
