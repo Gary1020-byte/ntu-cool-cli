@@ -3,17 +3,20 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ntu-course-announcements"
-version = "1.0.0"
-description = "Read-only fetcher for NTU Cool course announcements and course files."
+name = "ntu-cool-cli"
+version = "1.1.0"
+description = "Read-only CLI for NTU Cool: course announcements, course files, handouts, and submission status."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { file = "LICENSE" }
-keywords = ["ntu", "cool", "ceiba", "announcements", "course", "student"]
+keywords = [
+  "ntu", "cool", "ceiba", "cli", "announcements", "course", "files",
+  "homework", "handout", "student", "scraper", "read-only",
+]
 dependencies = ["requests>=2.28"]
 
 [project.scripts]
-ntu-cool = "ntu_fetch:main"
+ntu-cool-cli = "ntu_fetch:main"
 
 [tool.setuptools]
 py-modules = ["ntu_fetch"]
