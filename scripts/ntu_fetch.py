@@ -234,9 +234,22 @@ def fetch_courses(s: requests.Session) -> list[dict]:
 
 
 def fetch_all_courses_historical(s: requests.Session) -> list[dict]:
-    """Every course the account has ever been enrolled in. Not the current
-    roster — see fetch_courses. Kept because it is occasionally useful for
-    reading last term's exam schedule."""
+    """Every course the account has EVER been enrolled in. NOT the current
+    roster — see `fetch_courses`, which is what the CLI uses.
+
+    This endpoint is a trap. Measured 2026-10-23 on a real account: it answered
+    with 10 courses while the current roster had 7. The extras were last term's
+    (`【114-1 寒假】毒道之處`, `114 微積分學前自我檢測`, `工程力學一`,
+    `工程圖學`) plus three entries with `name: null` and
+    `access_restricted_by_date: true`. **Every one of them carried
+    `term: null`**, so there is no term field to filter on — you cannot tell
+    a stale course from a current one after the fact.
+
+    It is kept, unused, because reading last term's exam schedule is a real
+    need. It is NOT reachable from any CLI flag, and it should not be until
+    one exists that labels the output as historical. If you are wiring this
+    into something, filter by term yourself and say so in the output.
+    """
     r = s.get(f"{API}/courses", timeout=20)
     r.raise_for_status()
     return parse_json_loose(r.text)
@@ -436,6 +449,55 @@ def fetch_course_pages(s: requests.Session, course_id) -> list[dict]:
             if item.get("type") == "Page" and item.get("page_url"):
                 out.append(item)
     return out
+
+
+def _absolute_endpoint(endpoint: str, course_id) -> str:
+    """Absolute-ise a `data-api-endpoint` value.
+
+    Measured 2026-10-23: the attribute usually holds an absolute API URL, but
+    some assignments carry a bare page slug (`ke-cheng-da-gang`) instead.
+    Passing that to requests raises MissingSchema — the slug is not a URL.
+    """
+    if endpoint.startswith("http"):
+        return endpoint
+    if "/" in endpoint:
+        return f"{API}/courses/{course_id}/{endpoint.lstrip('/')}"
+    return f"{API}/courses/{course_id}/pages/{endpoint}"
+
+
+def fetch_course_page(s: requests.Session, course_id, slug: str) -> dict:
+    """One course page's content, addressed by its slug.
+
+    `/pages` is not a list endpoint — a page is fetched by slug, and the slug
+    comes from the module item (`page_url`). The body is HTML; `strip_html`
+    turns it into readable text.
+    """
+    r = s.get(f"{API}/courses/{course_id}/pages/{slug}", timeout=30)
+    r.raise_for_status()
+    return parse_json_loose(r.text)
+
+
+def fetch_handout_bytes(s: requests.Session, endpoint: str, dest: str,
+                        expect_magic: bytes | None = None) -> dict:
+    """Download a handout that was linked from an assignment description.
+
+    Two hops, and the first one looks like a failure if you are not expecting
+    it: the `data-api-endpoint` answers with **JSON describing the file**, not
+    the file. The signed `url` is inside that JSON. A direct download against
+    the endpoint fails the magic-byte check with a misleading "magic
+    mismatch" — the wrong endpoint, not a corrupt file.
+    """
+    r = s.get(endpoint, timeout=30)
+    r.raise_for_status()
+    meta = parse_json_loose(r.text)
+    signed = meta.get("url")
+    if not signed:
+        return {"error": "the file metadata carried no download url",
+                "status": r.status_code}
+    magic = expect_magic
+    if magic is None and "pdf" in (meta.get("content-type") or ""):
+        magic = b"%PDF-"
+    return download_file(s, signed, dest, magic)
 
 
 def fetch_modules(s: requests.Session, course_id) -> list[dict]:
@@ -728,6 +790,11 @@ def main() -> int:
     ap.add_argument("--list-handouts", action="store_true",
                     help="list handout links found in assignment descriptions "
                          "(where CA material lives when the Files tree is empty)")
+    ap.add_argument("--show-page", metavar="SLUG",
+                    help="print one course page's content, addressed by its "
+                         "slug (see --list-pages for the slugs)")
+    ap.add_argument("--download-handout", action="store_true",
+                    help="download the handouts linked in assignment descriptions")
     args = ap.parse_args()
 
     if args.probe:
@@ -755,9 +822,36 @@ def main() -> int:
 
         courses = fetch_courses(s)
 
+        # ---- one course page's content, by slug ----
+        if args.show_page:
+            picked = courses if args.all_courses else [
+                c for c in courses
+                if any(find_course([c], n) for n in args.course)]
+            if not picked:
+                ap.error("no course matched --course")
+            if len(picked) > 1:
+                ap.error(f"--show-page needs one course, but {len(picked)} matched; "
+                         f"narrow it with --course")
+            c = picked[0]
+            try:
+                page = fetch_course_page(s, c["id"], args.show_page)
+            except Exception as e:
+                print(f"  FAIL {type(e).__name__}: {e}", file=sys.stderr)
+                return 1
+            body = strip_html(page.get("body") or "")
+            title = page.get("title") or args.show_page
+            print(f"# {title}\n")
+            print(f"course: {c.get('name')} ({c['id']})")
+            print(f"slug  : {args.show_page}")
+            print(f"url   : {page.get('html_url') or ''}")
+            print(f"updated: {page.get('updated_at') or ''}\n")
+            print(body)
+            return 0
+
         # ---- course-scoped list modes, all read-only ----
         if (args.list_assignments or args.list_submissions or args.list_pages
-                or args.list_modules or args.list_handouts):
+                or args.list_modules or args.list_handouts
+                or args.download_handout):
             picked = courses if args.all_courses else [
                 c for c in courses
                 if any(find_course([c], n) for n in args.course)]
@@ -813,15 +907,58 @@ def main() -> int:
                     for p in pages:
                         print(f"  page {str(p.get('page_url'))[:60]:62} "
                               f"{str(p.get('title'))[:40]}")
-                if args.list_handouts:
+                if args.list_handouts or args.download_handout:
                     try:
                         handouts = fetch_assignment_handouts(s, cid)
                     except Exception as e:
                         print(f"  handouts FAIL {type(e).__name__}: {e}", file=sys.stderr)
                         continue
                     for h in handouts:
+                        endpoint = _absolute_endpoint(h["endpoint"], cid)
+                        is_page = "/pages/" in endpoint
                         print(f"  [{h.get('assignment_id')}] "
-                              f"{str(h.get('assignment_name'))[:40]:42} {h['endpoint']}")
+                              f"{str(h.get('assignment_name'))[:40]:42} {endpoint}")
+                        if not args.download_handout:
+                            continue
+                        if not args.files_out:
+                            ap.error("--download-handout needs --files-out")
+                        # Not every endpoint is a file. An assignment can link a
+                        # course page instead (the exam entries all point at
+                        # the syllabus page) — there is nothing to download
+                        # there, and the metadata has no `url` to follow.
+                        if is_page:
+                            print("    (a page, not a file — use --show-page)",
+                                  file=sys.stderr)
+                            continue
+                        # The endpoint is JSON describing the file; the name and
+                        # the signed url are inside it. Fetch the metadata
+                        # first so the file lands under its real display name.
+                        try:
+                            meta = s.get(endpoint, timeout=30)
+                            meta.raise_for_status()
+                            info = parse_json_loose(meta.text)
+                        except Exception as e:
+                            print(f"    FAIL metadata {type(e).__name__}: {e}",
+                                  file=sys.stderr)
+                            continue
+                        signed = info.get("url")
+                        if not signed:
+                            print("    (no download url in the metadata)",
+                                  file=sys.stderr)
+                            continue
+                        raw_name = str(info.get("display_name")
+                                       or info.get("filename")
+                                       or h.get("assignment_id"))
+                        safe = os.path.basename(raw_name).replace("/", "_")
+                        safe = re.sub(r"[^\w.\-㐀-鿿]+", "_", safe).strip("_") \
+                            or str(h.get("assignment_id"))
+                        dest = os.path.join(args.files_out, str(cid), safe)
+                        res = fetch_handout_bytes(s, endpoint, dest)
+                        if "path" in res:
+                            print(f"    OK {res['bytes']:>9} B  {safe}", file=sys.stderr)
+                        else:
+                            print(f"    FAIL {res.get('error', res.get('status'))}",
+                                  file=sys.stderr)
             return 0
 
         # ---- files mode short-circuits the announcement pipeline ----

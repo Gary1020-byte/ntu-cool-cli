@@ -1,7 +1,7 @@
 ---
 name: ntu-cool-cli
 description: "Use when fetching NTU Cool/Ceiba course data: announcements, files, handouts, submission status."
-version: 3
+version: 4
 author: Hermes Agent
 license: MIT
 metadata:
@@ -84,6 +84,18 @@ The 401 is a *good* sign: the endpoint exists and gates properly. It proves noth
 the authenticated response shape.
 
 ## `/api/v1/courses` is NOT your current course list
+
+**The CLI never touches it.** `fetch_courses()` parses the home page instead,
+so every course the tool lists is current-term. `fetch_all_courses_historical()`
+exists but is not reachable from any flag — measured 2026-10-23 on a real
+account it answered with 10 courses against a current roster of 7, the extras
+being last term's (`【114-1 寒假】…`, `114 微積分學前自我檢測`, `工程力學一`,
+`工程圖學`) plus three entries with `name: null` and
+`access_restricted_by_date: true`. **Every one of them had `term: null`**, so
+there is no term field to filter on afterwards.
+
+If you call that function yourself, filter by term and label the output as
+historical.
 
 **This endpoint returns courses you have EVER been associated with, and it hides the
 current term's courses.** Verified by authenticated fetch: it returned 10 courses, of
@@ -512,7 +524,7 @@ points, and it is invisible if you report only today's deadline.
 
 ## Computer Assignment handouts live in the assignment description, not the Files tree
 
-**CLI flag: `--list-handouts`.**
+**CLI flags: `--list-handouts` (the links) and `--download-handout` (the bytes).**
 
 **The Files tree is not where CA material is.** A course whose entire handout
 set is three assignment descriptions looks empty in Files.
@@ -602,7 +614,7 @@ Pair this with the course's 「作業遲交政策」 page rather than assuming a
 
 ### Course pages are addressed by slug, and the slug is on the module item
 
-**CLI flag: `--list-pages`.**
+**CLI flags: `--list-pages` (the slugs) and `--show-page <slug>` (the body).**
 
 The 課程大綱 / 課程行事曆 / 遲交政策 / 繳交方式 / 撰寫原則 live in `/pages`, and the
 module item carries the slug in `page_url`:

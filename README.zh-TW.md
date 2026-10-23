@@ -121,6 +121,26 @@ echo '{"ntu_user":"bXXXXXXXX","ntu_pass":"..."}' > ~/.ntu-creds.json
 另外注意：一個 terminal 裡 export 的環境變數，在另一個 terminal 是看不到的 ——
 想讓這支腳本能無人值守跑（cron 之類），靠的是憑證檔，不是環境變數。
 
+### 密碼可能從哪裡洩漏、實際上又從哪裡洩漏
+
+密碼是當成表單欄位送到 ADFS 的。它「本來可能」做的事，跟實際的行為：
+
+| 洩漏面 | 這個工具的行為 |
+|---|---|
+| 印在錯誤訊息裡 | 不會 —— 登入失敗只說是哪一段跳轉、HTTP status 多少，不會印出送出的值 |
+| 被 `requests` 的除錯輸出倒出來 | 不會 —— 沒有 `enable_http_debugging()` 也沒有 `debuglevel`，而且有測試盯著它們不出現 |
+| 留在 traceback 裡 | 不會 —— traceback 帶的是「呼叫了什麼」，不是「值是多少」；值只存在於 POST body |
+| 放在别人讀得到的檔案裡 | 直接拒絕讀取 |
+
+**真正的風險在你那一側：**
+
+- **憑證檔的路徑。** `--cred-file ~/.ntu-creds.json` 會進 shell history，
+  路徑也會出現在 process list。所以手動打指令時用環境變數比較安全；
+  反而是 cron 這種無人值守的場景才需要檔案。
+- **簽章的下載網址。** 檔案的 `url` 本身就是憑證。工具不會印它，
+  也不會把它寫進任何產出的檔案。**不要貼到 issue 裡。**
+- **session cookie。** 存在 `requests.Session` 裡，行程結束就消失，磁碟上不留任何東西。
+
 ---
 
 ## 這個專案記住的三個坑
@@ -239,10 +259,22 @@ python3 scripts/ntu_fetch.py --list-modules --course <COURSE> --cred-file ~/.ntu
 
 # 作業描述裡的 handout 連結（不在 Files 樹裡的那些）
 python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# 單一課程頁面的內容，用 slug 指定（slug 列表見 --list-pages）
+python3 scripts/ntu_fetch.py --show-page ke-cheng-da-gang --course <COURSE> \
+    --cred-file ~/.ntu-creds.json
+
+# 把 handout 本身下載下來
+python3 scripts/ntu_fetch.py --download-handout --course <COURSE> \
+    --cred-file ~/.ntu-creds.json --files-out ./handouts/
 ```
 
 `lock_at` 才是真正的截止時間；`due_at` 是公告的時間，兩者之間的落差是
 課程頁面承諾的寬限期。`lock_at` 已經過期 = 上傳視窗關閉了。
+
+`--show-page` 需要剛好一門課 —— 它會印出頁面標題、網址跟純文字內容。
+`--download-handout` 走兩段式下載（endpoint 回的是描述檔案的 JSON，
+signed URL 在裡面），檔案會用真實檔名存檔。
 
 ---
 
@@ -277,7 +309,10 @@ python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.nt
                         flag: --list-modules
   8. CA handout     —— 作業描述裡的 handout 連結，不在 Files 樹裡
                         （CA 課的 Files 樹常常近乎空白）
-                        flag: --list-handouts
+                        flags: --list-handouts、--download-handout
+  9. 頁面內容        —— 單一課程頁面的正文：大綱、行事曆、遲交政策、
+                        繳交方式
+                        flag: --show-page <slug>
 
 把這份清單列給我，問我要哪些，然後等我的回答。
 
@@ -285,9 +320,10 @@ python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.nt
   - clone 這個 repo
   - 安裝 `ntu-cool-cli` 套件
   - 讀 SKILL.md，只保留我選的那些功能對應的章節
-  - 告訴我怎麼提供憑證：環境變數 NTU_USER 與 NTU_PASS，或是一個有
-    ntu_user / ntu_pass 的 JSON 檔，用 --cred-file 帶進來。憑證檔必須是
-    mode 600 —— 工具拒絕讀取其他人可讀的檔案。絕對不要把憑證寫進 repo。
+  - 告訴我怎麼提供憑證。優先用環境變數 NTU_USER 與 NTU_PASS —— 不落地、
+    也不會留在 shell history。另一種是一個有 ntu_user / ntu_pass 的 JSON
+    檔，用 --cred-file 帶進來；那個檔案必須是 mode 600，因為工具拒絕讀取
+    其他人可讀的檔案。絕對不要把憑證寫進 repo，也絕對不要把憑證回報給我。
   - 先跑 `ntu-cool-cli --probe`。它不需要憑證，可以告訴你平台連不連得上。
     probe 沒乾淨之前不要去查憑證問題。
 
@@ -300,7 +336,7 @@ python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.nt
 
 Cool 把一門課的東西放在四個不同地方，而哪裡放什麼從外面猜不到 ——
 CA 課的 Files 樹常常近乎空白，從裡面找不到的 handout 通常在作業描述裡。
-把八個功能全裝上去，會讓 agent 讀一份它根本不會查的 skill 檔，
+把九個功能全裝上去，會讓 agent 讀一份它根本不會查的 skill 檔，
 而每一個用不上的功能都是「用錯來源回答」的機會。
 
 這份清單同時也是一張地圖：知道「這門課的 Files 樹是空的」的 agent，

@@ -777,6 +777,202 @@ class TestFetchModules(unittest.TestCase):
         self.assertEqual(seen[0]["include[]"], "items")
 
 
+class TestAbsoluteEndpoint(unittest.TestCase):
+    """`data-api-endpoint` is not always a URL.
+
+    Measured 2026-10-23: the attribute usually holds an absolute API URL, but
+    some assignments carry a bare page slug. Passing that to requests raises
+    MissingSchema — the slug is not a URL.
+    """
+
+    def test_absolute_url_is_left_alone(self):
+        url = "https://cool.ntu.edu.tw/api/v1/courses/9/files/101"
+        self.assertEqual(ntu_fetch._absolute_endpoint(url, 9), url)
+
+    def test_bare_slug_becomes_a_page_url(self):
+        self.assertEqual(
+            ntu_fetch._absolute_endpoint("ke-cheng-da-gang", 9),
+            "https://cool.ntu.edu.tw/api/v1/courses/9/pages/ke-cheng-da-gang")
+
+    def test_relative_path_is_made_absolute(self):
+        self.assertEqual(
+            ntu_fetch._absolute_endpoint("files/101", 9),
+            "https://cool.ntu.edu.tw/api/v1/courses/9/files/101")
+
+    def test_leading_slash_is_handled(self):
+        self.assertEqual(
+            ntu_fetch._absolute_endpoint("/files/101", 9),
+            "https://cool.ntu.edu.tw/api/v1/courses/9/files/101")
+
+
+class TestFetchHandoutBytes(unittest.TestCase):
+    """The first hop answers with JSON describing the file, not the file."""
+
+    def test_follows_the_signed_url_for_the_bytes(self):
+        import tempfile
+        seen = []
+
+        class S:
+            def get(self, url, **kw):
+                seen.append(url)
+                if url.endswith("/files/101"):
+                    return _FakeResponse({"url": "https://x/signed",
+                                          "display_name": "hw.pdf",
+                                          "content-type": "application/pdf"})
+                return _FakeResponse(None)
+
+        # download_file needs bytes; give the fake one a real body
+        class B:
+            status_code = 200
+            content = b"%PDF-1.4 fake"
+            headers = {"Content-Type": "application/pdf"}
+            text = ""
+
+            def raise_for_status(self):
+                pass
+
+        class S2(S):
+            def get(self, url, **kw):
+                seen.append(url)
+                if url.endswith("/files/101"):
+                    return _FakeResponse({"url": "https://x/signed",
+                                          "display_name": "hw.pdf",
+                                          "content-type": "application/pdf"})
+                return B()
+
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = os.path.join(tmp, "hw.pdf")
+            res = ntu_fetch.fetch_handout_bytes(
+                S2(), "https://cool.ntu.edu.tw/api/v1/courses/9/files/101", dest)
+            self.assertIn("path", res, f"no file written: {res}")
+            with open(dest, "rb") as f:
+                self.assertTrue(f.read().startswith(b"%PDF-"))
+
+    def test_metadata_without_a_url_is_an_error_not_a_crash(self):
+        class S:
+            def get(self, url, **kw):
+                return _FakeResponse({"display_name": "x.pdf"})
+
+        res = ntu_fetch.fetch_handout_bytes(S(), "https://x/files/1", "/tmp/x.pdf")
+        self.assertIn("error", res)
+        self.assertNotIn("path", res)
+
+
+class TestCredentialsNeverReachOutput(unittest.TestCase):
+    """A credential that gets logged is a leaked credential.
+
+    The password is submitted to ADFS as a form field. If any error path
+    printed the request body, the response, or the session's cookies, the
+    password would end up in a terminal, a log file, or a CI transcript.
+
+    This is a guard, not a claim: it runs the real login path against a fake
+    session and asserts the secret never appears in anything the tool prints.
+    """
+
+    SECRET_PASS = "hunter2-not-a-real-password"
+    SECRET_USER = "bXXXXXXXX"
+
+    def _capture_login_output(self, fail_at: str) -> str:
+        """Run cool_login with a session that fails at a chosen hop."""
+        import io
+        import contextlib
+
+        class S:
+            def __init__(self):
+                self.headers = {}
+
+            def get(self, url, **kw):
+                if "login/saml" in url:
+                    return _FakeResponse({"__html__": "<form></form>"})
+
+                class R:
+                    status_code = 200
+                    text = "<form action='/x'></form>"
+                    headers = {}
+                    content = b""
+
+                    def raise_for_status(self):
+                        pass
+                return R()
+
+            def post(self, url, **kw):
+                # The credential is about to be submitted here.
+                if fail_at == "post":
+                    raise RuntimeError(f"network blew up while posting to {url}")
+                class R:
+                    status_code = 200
+                    text = "<form action='/y'></form>"
+                    headers = {}
+                    content = b""
+
+                    def raise_for_status(self):
+                        pass
+                return R()
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            try:
+                ntu_fetch.cool_login(S(), self.SECRET_USER, self.SECRET_PASS)
+            except Exception:
+                pass
+        return buf.getvalue()
+
+    def test_password_never_appears_in_output(self):
+        out = self._capture_login_output("post")
+        self.assertNotIn(self.SECRET_PASS, out,
+                         "the password reached the output")
+        self.assertNotIn(self.SECRET_USER, out,
+                         "the username reached the output")
+
+    def test_no_debug_mode_that_would_dump_bodies(self):
+        """requests' http debug logging prints headers and bodies.
+
+        A stray `enable_http_debugging()` or `debuglevel=1` would put the
+        submitted password into stdout.
+        """
+        src = pathlib.Path(ntu_fetch.__file__).read_text(encoding="utf-8")
+        for bad in ("enable_http_debugging", "debuglevel", "response_hook"):
+            self.assertNotIn(bad, src,
+                             f"{bad} would dump request bodies to stdout")
+
+    def test_credential_file_must_not_be_world_readable(self):
+        """A credential file others can read is a leaked credential."""
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump({"ntu_user": self.SECRET_USER, "ntu_pass": self.SECRET_PASS}, f)
+            path = f.name
+        try:
+            os.chmod(path, 0o644)
+            with self.assertRaises(Exception) as cm:
+                ntu_fetch.load_credentials(path)
+            self.assertIn("readable by others", str(cm.exception))
+            # and it must be readable once the permissions are right
+            os.chmod(path, 0o600)
+            user, pw = ntu_fetch.load_credentials(path)
+            self.assertEqual(pw, self.SECRET_PASS)
+        finally:
+            os.unlink(path)
+
+    def test_environment_credentials_are_accepted(self):
+        """The env-var path leaves no file on disk, so it is the safer one."""
+        old_u, old_p = os.environ.get("NTU_USER"), os.environ.get("NTU_PASS")
+        os.environ["NTU_USER"] = self.SECRET_USER
+        os.environ["NTU_PASS"] = self.SECRET_PASS
+        try:
+            user, pw = ntu_fetch.load_credentials(None)
+            self.assertEqual(user, self.SECRET_USER)
+            self.assertEqual(pw, self.SECRET_PASS)
+        finally:
+            if old_u is None:
+                os.environ.pop("NTU_USER", None)
+            else:
+                os.environ["NTU_USER"] = old_u
+            if old_p is None:
+                os.environ.pop("NTU_PASS", None)
+            else:
+                os.environ["NTU_PASS"] = old_p
+
+
 class TestNoWriteOperations(unittest.TestCase):
     """The tool is read-only. This is the guard that keeps it that way.
 
