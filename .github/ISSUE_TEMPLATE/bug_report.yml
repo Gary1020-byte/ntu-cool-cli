@@ -1,0 +1,61 @@
+name: Bug report
+description: Something doesn't work
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Do not paste credentials, tokens, or a signed Cool URL.**
+        A `verifier=` query parameter *is* the credential — strip it, or delete
+        the comment.
+
+  - type: textarea
+    id: command
+    attributes:
+      label: The exact command you ran
+      placeholder: python3 scripts/ntu_fetch.py --probe
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead
+      description: Include the error output, with any credential redacted.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "Ubuntu 24.04"
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Which mode failed
+      options:
+        - "--probe (reachability check)"
+        - "--list-files (course file listing)"
+        - "--announcements (announcement fetch)"
+        - "Installation / imports"
+        - "Other"
+    validations:
+      required: true

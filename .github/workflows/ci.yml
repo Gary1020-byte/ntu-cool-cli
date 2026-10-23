@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # The matrix job's check name carries the Python version, so it changes per
+  # version. Branch protection needs one stable context to gate on, so the job
+  # below is named exactly "test" and it waits for the whole matrix.
+  matrix:
+    name: matrix (${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.9 is the floor declared in pyproject.toml — test the floor, not a
+          # version everyone happens to run. actions/python-versions has no
+          # 3.9 build for ubuntu-26.04 (3.9 is EOL), so this leg pins 24.04,
+          # which does have one.
+          - { python-version: "3.9",  os: "ubuntu-24.04" }
+          - { python-version: "3.10", os: "ubuntu-latest" }
+          - { python-version: "3.11", os: "ubuntu-latest" }
+          - { python-version: "3.12", os: "ubuntu-latest" }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
+
+      - name: Run the offline test suite
+        # 53 tests, no network, no credentials, no login. They can never touch
+        # cool.ntu.edu.tw.
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Byte-compile the script
+        run: python3 -m compileall -q scripts tests
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Byte-compile the script
+        run: python3 -m compileall -q scripts tests
+
+  # The gate. Branch protection requires a check named "test".
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    needs: [matrix, lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
+      - name: Full suite on the default interpreter
+        run: python3 -m unittest discover -s tests -v
