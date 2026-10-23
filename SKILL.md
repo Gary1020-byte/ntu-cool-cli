@@ -314,13 +314,13 @@ unusable on the strength of one extraction path.
 
 ```bash
 python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
-python3 scripts/ntu_fetch.py --download-files --course <COURSE> \\
+python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
     --cred-file ~/.ntu-creds.json --files-out ~/downloads --max-mb 20
 ```
 
 `--max-mb` skips oversized files. Write to a scratch or staging directory and let the user
-decide what to keep — per § Filing the result, downloading straight into a working collection of notes is not
-a unilateral call.
+decide what to keep — per § Filing the result, downloading straight into a working
+collection of notes is not a unilateral call.
 
 **Check what is already local before pulling anything.** Your downloads folder and your
 existing notes often already hold the same lecture notes and homework sets that
@@ -339,13 +339,12 @@ The split that makes this cheap:
 
 | destination | what lands there |
 |---|---|
-| `captures/ntu-cool-<slug>-<date>.md` | the announcement text — one file per course, all of it, unfiltered |
-| `a capture folder inside the notes system` | the same file again, because a deadline in it is an action item and must be readable from the notes that holds tasks |
-| `an inbox folder` | one task per inferred deadline, awaiting a ruling |
+| `~/captures/ntu-cool-<slug>-<date>.md` | the announcement text — one file per course, all of it, unfiltered |
+| a capture folder inside the notes system | the same file again, because a deadline in it is an action item and must be readable from wherever the tasks live |
+| an inbox folder | one task per inferred deadline, awaiting a ruling |
 
-The duplicated raw file is deliberate, not a mistake: the study record is the study
-record and the action record is the action record. A source that matters to both belongs
-to both.
+The duplicated capture file is deliberate, not a mistake: the study record and the
+action record are kept apart. A source that matters to both belongs to both.
 
 Two facts to carry into the report rather than into a task body as settled:
 
@@ -356,7 +355,7 @@ stated premise is 「unknown」 when the answer was already on disk is worse tha
 
 **a deadline in an announcement is not automatically an action item.** Same reasoning,
 different source: an announcement states a date, the decision to act on it is his. That
-is what `inbox/` is for.
+is what an inbox is for.
 
 Do not run the upstream Flask daemon. It is a second always-on service for a one-endpoint
 need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
@@ -391,5 +390,5 @@ need, and it pulls in an ORM the pinned versions cannot support on this interpre
   it and read the image — that is how a 0-character quiz-scope worksheet becomes a
   readable problem statement.
 - ❌ Don't put a file's signed `url` in a report, a log, or a commit. It authenticates.
-- ❌ Don't download straight into a working notes collection. Stage it, list it, and let the filing decision
-  stay his.
+- ❌ Don't download straight into a working notes collection. Stage it, list it, and let
+  the filing decision stay his.
