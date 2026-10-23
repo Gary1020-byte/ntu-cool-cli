@@ -127,6 +127,31 @@ A group- or world-readable credential file is **refused** with the `chmod` comma
 fix it. Note that environment variables exported in one terminal are not visible to
 another — a credential file is what makes this script usable unattended (cron, etc.).
 
+### Where the password can and cannot leak
+
+The password is submitted to ADFS as a form field. Four things it could have
+done, and what it actually does:
+
+| leak surface | what the tool does |
+|---|---|
+| printed in an error message | it doesn't — the login failure names the hop and the HTTP status, never the submitted values |
+| dumped by `requests` debug logging | it doesn't — `enable_http_debugging()` and `debuglevel` are absent, and a test asserts they stay absent |
+| left in the output as a traceback | it doesn't — the traceback would carry the *call*, not the value; the value only ever exists in the POST body |
+| sitting in a world-readable file | it refuses to read one |
+
+**The real risks are on your side of the boundary:**
+
+- **The credential file's path.** `--cred-file ~/.ntu-creds.json` goes into
+  your shell history, and the path is visible in the process list. That is
+  why the environment-variable path is the better one when you are typing
+  the command by hand — and the file path is the better one when a cron job
+  needs it unattended.
+- **The signed download URLs.** A file's `url` from the API authenticates.
+  The tool never logs one, and it never writes one into a file it produces.
+  Don't paste one into an issue.
+- **The session cookies.** They live in the `requests.Session` for the length
+  of the run and are gone when the process exits. Nothing is written to disk.
+
 ---
 
 ## The three traps this encodes
@@ -246,11 +271,24 @@ python3 scripts/ntu_fetch.py --list-modules --course <COURSE> --cred-file ~/.ntu
 
 # handout links that live in assignment descriptions, not the Files tree
 python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# one course page's content, by slug (see --list-pages for the slugs)
+python3 scripts/ntu_fetch.py --show-page ke-cheng-da-gang --course <COURSE> \
+    --cred-file ~/.ntu-creds.json
+
+# download the handouts themselves
+python3 scripts/ntu_fetch.py --download-handout --course <COURSE> \
+    --cred-file ~/.ntu-creds.json --files-out ./handouts/
 ```
 
 `lock_at` is the real deadline; `due_at` is the nominal one, and the gap between
 them is the buffer the course page promises. A `lock_at` in the past means the
 upload window is closed.
+
+`--show-page` needs exactly one course — it prints the page's title, its URL,
+and the body as plain text. `--download-handout` follows the two-hop path
+(the endpoint answers with JSON describing the file; the signed URL is inside
+it) and writes the file under its real display name.
 
 ---
 
@@ -291,7 +329,10 @@ all of them by default. The capabilities are:
   8. CA handouts          — handout links that live in assignment descriptions
                             rather than the Files tree (the Files tree is often
                             nearly empty for CA courses)
-                            flag: --list-handouts
+                            flags: --list-handouts, --download-handout
+  9. Page content         — the body of one course page: syllabus, calendar,
+                            late-submission policy, submission instructions
+                            flag: --show-page <slug>
 
 Show me this list, ask which ones I want, and wait for my answer.
 
@@ -299,10 +340,12 @@ Then:
   - clone the repo
   - install the `ntu-cool-cli` package
   - read SKILL.md, and keep only the sections matching the capabilities I chose
-  - tell me how to supply credentials: NTU_USER and NTU_PASS in the
-    environment, or a JSON file with ntu_user / ntu_pass keys, passed with
-    --cred-file. The credential file must be mode 600 — the tool refuses to
-    read a world-readable one. Never write credentials into the repo.
+  - tell me how to supply credentials. Prefer the environment variables
+    NTU_USER and NTU_PASS — nothing lands on disk and nothing stays in the
+    shell history. The alternative is a JSON file with ntu_user / ntu_pass
+    keys, passed with --cred-file; that file must be mode 600, because the
+    tool refuses to read a world-readable one. Never write credentials into
+    the repo, and never echo them back to me.
   - run `ntu-cool-cli --probe` first. It needs no credentials and tells you
     whether the platform is reachable. Do not debug credentials until the
     probe is clean.
@@ -318,7 +361,7 @@ the upload in the browser. Never attempt a write against the platform.
 Cool keeps a course's material in four different places, and which one holds
 what is not guessable from the outside — the Files tree is nearly empty for
 some CA courses, and a handout that is missing from it is usually in the
-assignment description. Installing all eight capabilities means the agent
+assignment description. Installing all nine capabilities means the agent
 reads a skill file that describes stores it will never query, and every
 capability it does not need is a way for it to answer a question with the
 wrong source.

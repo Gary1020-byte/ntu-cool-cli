@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-23
+
+### Added
+
+- `--show-page <slug>` — one course page's content, as plain text: the title,
+  the URL, and the body. Previously `--list-pages` gave only the slugs, so
+  reading the syllabus meant a second API call by hand.
+- `--download-handout` — downloads the handouts linked from assignment
+  descriptions, under their real display names. The path is two hops: the
+  endpoint answers with JSON describing the file, and the signed URL is inside
+  it.
+
+### Fixed
+
+- **A bare `data-api-endpoint` value was passed to `requests` as a URL.** Some
+  assignments carry a page slug (`ke-cheng-da-gang`) rather than an absolute
+  API URL, and requests raised `MissingSchema` — the slug is not a URL. Now
+  absolute-ised, and a page endpoint is reported as a page instead of being
+  treated as a file to download.
+- **`fetch_all_courses_historical()` is now clearly labelled as a trap.** It
+  is not reachable from any flag — the CLI uses `fetch_courses()`, which
+  parses the home page and returns only current-term courses. Measured
+  2026-10-23 on a real account: 7 current courses against 10 from the
+  historical endpoint, the extras being last term's plus three dead entries
+  with `name: null`. Every one of them had `term: null`, so there is no term
+  field to filter on afterwards. The docstring now says so.
+
+### Credentials
+
+- New tests assert the password never reaches the output: the login path is
+  run against a failing session and the secret must not appear in stdout or
+  stderr; `enable_http_debugging`, `debuglevel` and `response_hook` must stay
+  absent (any of them would dump request bodies); a world-readable credential
+  file is refused; the environment-variable path is accepted.
+- The README gained a "Where the password can and cannot leak" section. The
+  tool's own behaviour is safe on all four surfaces; the real risks are the
+  credential file's *path* (shell history, process list), the signed download
+  URLs, and the session cookies — which live only in the `requests.Session`
+  and are gone when the process exits.
+
+### Tests
+
+79 now, up from 69.
+
 ## [1.2.0] - 2026-10-23
 
 ### Added
@@ -116,7 +160,8 @@ read-only fetcher for NTU Cool course announcements and course files.
 - A false claim in `ACKNOWLEDGEMENTS.md` about the project it was derived from.
 - The author's own course roster was removed from every tracked file.
 
-[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Gary1020-byte/ntu-cool-cli/releases/tag/v1.0.0
