@@ -48,3 +48,5 @@ Thumbs.db
 # (ids and names). It is material for the notes, not for the published repo.
 *announcements*.md
 *-announcements.md
+# Local notes about this repo — personal, not for the published tree
+ARCHITECTURE.html
