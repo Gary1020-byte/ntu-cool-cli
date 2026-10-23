@@ -1,7 +1,7 @@
 ---
 name: ntu-cool-cli
 description: "Use when fetching NTU Cool/Ceiba course data: announcements, files, handouts, submission status."
-version: 2
+version: 3
 author: Hermes Agent
 license: MIT
 metadata:
@@ -512,6 +512,8 @@ points, and it is invisible if you report only today's deadline.
 
 ## Computer Assignment handouts live in the assignment description, not the Files tree
 
+**CLI flag: `--list-handouts`.**
+
 **The Files tree is not where CA material is.** A course whose entire handout
 set is three assignment descriptions looks empty in Files.
 
@@ -565,6 +567,9 @@ signed `url` → bytes.
 
 ### Your own submission status lives at `/assignments/{id}/submissions/self`
 
+**CLI flag: `--list-submissions`.** The endpoint below is what it calls, and
+what each field means.
+
 **This is the endpoint that answers 「我有沒有交」 and 「遲交還能不能補」.**
 
 ```
@@ -597,6 +602,8 @@ Pair this with the course's 「作業遲交政策」 page rather than assuming a
 
 ### Course pages are addressed by slug, and the slug is on the module item
 
+**CLI flag: `--list-pages`.**
+
 The 課程大綱 / 課程行事曆 / 遲交政策 / 繳交方式 / 撰寫原則 live in `/pages`, and the
 module item carries the slug in `page_url`:
 
@@ -616,6 +623,8 @@ announcements and still be fully documented here** — the 4-announcement sweep 
 a course hid all of it.
 
 ### A course can have NO modules, NO pages, NO quizzes, and NO calendar
+
+**CLI flag: `--list-modules`.**
 
 **`/pages` reached only through `/modules` is a chain of two links, and either link can
 be dead.** A course that uses neither of them has no course-outline page, no exam-date
@@ -925,6 +934,8 @@ mapping of 「which file is actually this course's」 is itself the deliverable,
 every later session that opens the cache will otherwise open the wrong file.
 
 ### `/assignments` is the homework roster — the syllabus is not
+
+**CLI flag: `--list-assignments`.**
 
 The syllabus is a **plan**; `/assignments` is the **record**. A course syllabus
 routinely names homework that does not exist yet: 「助教作業講解(Exam I+hw5-6)」

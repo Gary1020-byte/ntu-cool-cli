@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-23
+
+### Added
+
+Five read-only CLI flags, so the capabilities the skill describes no longer
+require writing API calls by hand:
+
+| flag | what it reads |
+|---|---|
+| `--list-assignments` | `/assignments` — the homework roster: name, `due_at`, `lock_at`, points |
+| `--list-submissions` | `/assignments/{id}/submissions/self` — your own status: unsubmitted / submitted / graded, score, late policy |
+| `--list-pages` | course pages: syllabus, calendar, late-submission policy, submission instructions |
+| `--list-modules` | modules — lectures grouped by week |
+| `--list-handouts` | handout links in assignment descriptions, where CA material lives when the Files tree is empty |
+
+Plus an **agent install prompt** in the README (English and Chinese) that
+lists the eight capabilities and tells the agent to ask which ones are needed
+before installing anything. A partial install is the normal case: the skill
+describes stores the agent will never query, and each unused capability is a
+way to answer a question from the wrong source.
+
+### Fixed
+
+- **`include[]=items` was not requested when listing modules.** Without it the
+  API returns the module list with every `items` array empty — no error, just
+  nothing. Measured against the live site: 8 modules and 0 items without it,
+  46 items with it. `--list-modules` printed module names and nothing under
+  them, and `--list-pages` printed nothing at all, because the page slugs
+  only exist on the module items.
+
+### Tests
+
+69 now, up from 53. The new ones cover the assignments / submissions / pages /
+modules / handouts readers, the `include[]=items` parameter, the
+`/submissions/self` path (the list form `?self=1` returns 403), and a
+read-only guard that asserts no fetch function issues a write — the only POST
+in the file is in the SAML login chain, which is authentication, not a write.
+
 ## [1.1.0] - 2026-10-23
 
 ### Changed
@@ -78,6 +116,7 @@ read-only fetcher for NTU Cool course announcements and course files.
 - A false claim in `ACKNOWLEDGEMENTS.md` about the project it was derived from.
 - The author's own course roster was removed from every tracked file.
 
-[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/Gary1020-byte/ntu-cool-cli/releases/tag/v1.0.0
