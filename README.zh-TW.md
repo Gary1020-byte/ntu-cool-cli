@@ -1,6 +1,9 @@
 # ntu-cool-cli
 
-用 command line 讀 NTU Cool 的課程公告、課程檔案、CA handout 與繳交狀態。
+一個 CLI，同時也是給 Agent 用的 skill —— 唯讀地讀取 NTU Cool 的課程公告、
+課程檔案、CA handout 與繳交狀態。
+
+可以直接在 shell 裡用，也可以裝成 skill 讓 agent 來驅動。
 
 > English version: [README.md](README.md)
 
