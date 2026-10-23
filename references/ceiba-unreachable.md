@@ -33,7 +33,7 @@ Something filters that one host from this server. Candidates, in order of likeli
 1. **A source-range ACL on NTU's side.** This server is on residential/campus-adjacent
    infrastructure in Taiwan; ceiba may be restricted to campus or VPN ranges.
 2. **A blocklist entry** specific to ceiba.ntu.edu.tw.
-3. An upstream network-level filter between this host and 140.112.161.178 specifically.
+3. A network-level filter between this host and 140.112.161.178 specifically.
 
 There is no way to distinguish these from outside, and it is not worth the effort to — the
 NTU Cool path covers the actual need.
@@ -48,9 +48,9 @@ NTU Cool path covers the actual need.
   code change. Reachability must be confirmed with `--probe` before writing any Ceiba
   code.
 
-## Upstream Ceiba parser, for the record
+## The Ceiba table parser, for the record
 
-`brianbbsu/NTU-Announcement-Crawler` does include a `CeibaCrawler`, parsing with hard table
+A known community implementation parses Ceiba with hard table
 indices:
 
 ```python

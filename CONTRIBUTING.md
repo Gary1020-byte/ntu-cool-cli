@@ -1,4 +1,4 @@
-# Contributing to ntu-course-announcements
+# Contributing to ntu-cool-cli
 
 Thanks for considering a contribution. This is a **read-only** fetcher for NTU
 Cool course announcements and course files.
@@ -24,8 +24,8 @@ whatever interpreter the user has, without a resolver fighting them.
 ## Getting set up
 
 ```bash
-git clone https://github.com/Gary1020-byte/ntu-course-announcements.git
-cd ntu-course-announcements
+git clone https://github.com/Gary1020-byte/ntu-cool-cli.git
+cd ntu-cool-cli
 python3 -m pip install -r requirements.txt
 ```
 

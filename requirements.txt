@@ -1,4 +1,4 @@
-# One dependency. The upstream project this was derived from needed six
+# One dependency. A service-based implementation of the same fetch needs six
 # (beautifulsoup4, Flask, python-dateutil, PyYAML, requests, SQLAlchemy) plus a
 # Flask daemon and an ORM migration surface, to read one JSON endpoint.
 #
