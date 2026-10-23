@@ -49,8 +49,8 @@ source is credited in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
 As a command — this gives you `ntu-cool` on your PATH:
 
 ```bash
-git clone <this-repo>
-cd ntu-cool-announcements-skill
+git clone https://github.com/Gary1020-byte/ntu-course-announcements.git
+cd ntu-course-announcements
 pipx install .          # or: uv tool install .  /  python3 -m pip install --user .
 ntu-cool --probe
 ```
