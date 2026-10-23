@@ -222,6 +222,90 @@ python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
 下載路徑是 `<files-out>/<course_id>/<file_id>/<檔名>`，
 所以兩個同名檔案不會互相蓋掉。
 
+### 作業、繳交、課程頁面、modules
+
+```bash
+# 作業清單：名稱、due_at、lock_at、配分
+python3 scripts/ntu_fetch.py --list-assignments --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# 每份作業我自己的繳交狀態（唯讀）
+python3 scripts/ntu_fetch.py --list-submissions --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# 課程頁面：大綱、行事曆、遲交政策、繳交方式
+python3 scripts/ntu_fetch.py --list-pages --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# modules —— 依週分組的 lecture
+python3 scripts/ntu_fetch.py --list-modules --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# 作業描述裡的 handout 連結（不在 Files 樹裡的那些）
+python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.ntu-creds.json
+```
+
+`lock_at` 才是真正的截止時間；`due_at` 是公告的時間，兩者之間的落差是
+課程頁面承諾的寬限期。`lock_at` 已經過期 = 上傳視窗關閉了。
+
+---
+
+## 當成 Agent skill 安裝
+
+把下面這段貼給你的 agent（Claude Code、Hermes、自訂助理 —— 任何能跑指令、
+讀檔案的都算）。
+
+**Agent 必須先問你需要哪些功能，然後只裝那些。** 每個功能都對應到一個
+特定 flag 或 `SKILL.md` 的一節，所以「只裝一部分」是正常情況，不是妥協。
+
+````text
+安裝 NTU Cool skill：https://github.com/Gary1020-byte/ntu-cool-cli
+
+安裝前先問我需要哪些功能。不要全部預設安裝。功能清單：
+
+  1. 課程公告        —— 公告、截止日、助教通知
+                        flag: --course / --all-courses
+  2. 課程檔案        —— Files 樹：講義、worksheet、解答、大綱 PDF
+                        flags: --list-files、--download-files
+  3. 公告附件        —— 綁在某一篇公告上的檔案（跟 Files 樹是不同的集合）
+                        已包含在 --list-files / --download-files
+  4. 作業清單        —— /assignments：有哪些作業、due_at、lock_at、
+                        配分，以及 handout 連結
+                        flag: --list-assignments
+  5. 繳交狀態        —— 我每份作業的狀態：未繳 / 已繳 / 已批改、分數、
+                        遲交狀態
+                        flag: --list-submissions
+  6. 課程頁面        —— 大綱、行事曆、遲交政策、繳交方式
+                        flag: --list-pages
+  7. Modules        —— 依週分組的 lecture
+                        flag: --list-modules
+  8. CA handout     —— 作業描述裡的 handout 連結，不在 Files 樹裡
+                        （CA 課的 Files 樹常常近乎空白）
+                        flag: --list-handouts
+
+把這份清單列給我，問我要哪些，然後等我的回答。
+
+接著：
+  - clone 這個 repo
+  - 安裝 `ntu-cool-cli` 套件
+  - 讀 SKILL.md，只保留我選的那些功能對應的章節
+  - 告訴我怎麼提供憑證：環境變數 NTU_USER 與 NTU_PASS，或是一個有
+    ntu_user / ntu_pass 的 JSON 檔，用 --cred-file 帶進來。憑證檔必須是
+    mode 600 —— 工具拒絕讀取其他人可讀的檔案。絕對不要把憑證寫進 repo。
+  - 先跑 `ntu-cool-cli --probe`。它不需要憑證，可以告訴你平台連不連得上。
+    probe 沒乾淨之前不要去查憑證問題。
+
+這工具是唯讀的。它只登入讀取，不會寫入、不會發文、不會留言。
+它無法上傳作業 —— 如果我要交東西，請告訴我什麼時候要交、檔案在哪，
+讓我自己用瀏覽器上傳。絕對不要嘗試對平台做任何寫入。
+````
+
+### 為什麼要 agent 先問
+
+Cool 把一門課的東西放在四個不同地方，而哪裡放什麼從外面猜不到 ——
+CA 課的 Files 樹常常近乎空白，從裡面找不到的 handout 通常在作業描述裡。
+把八個功能全裝上去，會讓 agent 讀一份它根本不會查的 skill 檔，
+而每一個用不上的功能都是「用錯來源回答」的機會。
+
+這份清單同時也是一張地圖：知道「這門課的 Files 樹是空的」的 agent，
+就會去問 `--list-handouts`，而不是回報「沒有附件」。
+
 ---
 
 ## 這些輸出該信多少

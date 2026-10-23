@@ -229,6 +229,104 @@ python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
 Downloads land at `<files-out>/<course_id>/<file_id>/<filename>`, so two files with
 the same display name never collide.
 
+### Assignments, submissions, pages, modules
+
+```bash
+# the homework roster: name, due_at, lock_at, points
+python3 scripts/ntu_fetch.py --list-assignments --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# your own submission status per assignment (read-only)
+python3 scripts/ntu_fetch.py --list-submissions --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# course pages: syllabus, calendar, late-submission policy
+python3 scripts/ntu_fetch.py --list-pages --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# modules — lectures grouped by week
+python3 scripts/ntu_fetch.py --list-modules --course <COURSE> --cred-file ~/.ntu-creds.json
+
+# handout links that live in assignment descriptions, not the Files tree
+python3 scripts/ntu_fetch.py --list-handouts --course <COURSE> --cred-file ~/.ntu-creds.json
+```
+
+`lock_at` is the real deadline; `due_at` is the nominal one, and the gap between
+them is the buffer the course page promises. A `lock_at` in the past means the
+upload window is closed.
+
+---
+
+## Installing this as an agent skill
+
+Copy the block below into your agent (Claude Code, Hermes, a custom assistant —
+anything that can run a command and read a file).
+
+**The agent must ask which capabilities are needed, then install only those.**
+Each capability maps to a specific flag or a specific section of `SKILL.md`, so
+a partial install is the normal case, not a compromise.
+
+````text
+Install the NTU Cool skill: https://github.com/Gary1020-byte/ntu-cool-cli
+
+Before installing anything, ask me which capabilities I need. Do NOT install
+all of them by default. The capabilities are:
+
+  1. Announcements        — course announcements, deadlines, TA notices
+                            flag: --course / --all-courses
+  2. Course files         — the Files tree: handouts, worksheets, solutions,
+                            syllabus PDFs
+                            flags: --list-files, --download-files
+  3. Announcement attachments — files bound to one announcement (a separate,
+                            smaller set from the Files tree)
+                            included in --list-files / --download-files
+  4. Homework roster      — /assignments: what is assigned, due_at, lock_at,
+                            points, and the handout link
+                            flag: --list-assignments
+  5. Submission status    — my own submission per assignment: unsubmitted /
+                            submitted / graded, score, late policy
+                            flag: --list-submissions
+  6. Course pages         — syllabus, calendar, late-submission policy,
+                            submission instructions
+                            flag: --list-pages
+  7. Modules              — lectures grouped by week
+                            flag: --list-modules
+  8. CA handouts          — handout links that live in assignment descriptions
+                            rather than the Files tree (the Files tree is often
+                            nearly empty for CA courses)
+                            flag: --list-handouts
+
+Show me this list, ask which ones I want, and wait for my answer.
+
+Then:
+  - clone the repo
+  - install the `ntu-cool-cli` package
+  - read SKILL.md, and keep only the sections matching the capabilities I chose
+  - tell me how to supply credentials: NTU_USER and NTU_PASS in the
+    environment, or a JSON file with ntu_user / ntu_pass keys, passed with
+    --cred-file. The credential file must be mode 600 — the tool refuses to
+    read a world-readable one. Never write credentials into the repo.
+  - run `ntu-cool-cli --probe` first. It needs no credentials and tells you
+    whether the platform is reachable. Do not debug credentials until the
+    probe is clean.
+
+This tool is READ-ONLY. It logs in to read and never writes, posts, or
+comments on cool.ntu.edu.tw. It cannot upload a submission — if I need to
+hand something in, tell me what is due and where the file is, and let me do
+the upload in the browser. Never attempt a write against the platform.
+````
+
+### Why the agent should ask first
+
+Cool keeps a course's material in four different places, and which one holds
+what is not guessable from the outside — the Files tree is nearly empty for
+some CA courses, and a handout that is missing from it is usually in the
+assignment description. Installing all eight capabilities means the agent
+reads a skill file that describes stores it will never query, and every
+capability it does not need is a way for it to answer a question with the
+wrong source.
+
+The list also doubles as a map: an agent that knows "the Files tree is empty
+for this course" knows to ask for `--list-handouts` instead of reporting
+"no attachments".
+
 ---
 
 ## What the output is worth trusting
