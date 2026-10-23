@@ -19,7 +19,7 @@ Design constraints, each one earned:
 
   # with credentials supplied by the caller
   NTU_USER=... NTU_PASS=... python3 ntu_fetch.py \
-      --course <COURSE> --since 2026-10-01 --out ~/notes/raw/
+      --course <COURSE> --since 2026-10-01 --out ~/captures/
 """
 from __future__ import annotations
 
