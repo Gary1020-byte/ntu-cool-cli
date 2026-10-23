@@ -14,6 +14,7 @@ import os
 import stat
 import sys
 import tempfile
+import inspect
 import pathlib
 import re
 import subprocess
@@ -255,6 +256,10 @@ class _FakeResponse:
         self.content = self.text.encode()
         # _paged_get reads Link to find rel="next"; no Link means one page.
         self.headers = headers if headers is not None else {}
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
 
 
 class _FakeSession:
@@ -579,6 +584,285 @@ class TestFetchCourseFilesEntersThroughTheRoot(unittest.TestCase):
         }
         with self.assertRaises(Exception):
             ntu_fetch.fetch_course_files(_FakeSession(routes), 9)
+
+
+class TestFetchAssignments(unittest.TestCase):
+    """`/assignments` is the homework roster. The syllabus is not."""
+
+    def test_reads_the_assignments_endpoint(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/assignments": [
+                {"id": 1, "name": "HW1", "due_at": "2026-10-22T15:59:59Z",
+                 "lock_at": "2026-10-23T00:00:00Z", "points_possible": 100},
+            ],
+        }
+        out = ntu_fetch.fetch_assignments(_FakeSession(routes), 9)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["name"], "HW1")
+        self.assertEqual(out[0]["points_possible"], 100)
+
+    def test_keeps_due_and_lock_separate(self):
+        """`lock_at` is the real deadline; `due_at` is the nominal one.
+
+        They are not the same value and not the same instant — the gap is the
+        buffer the course page promises. Collapsing them loses that.
+        """
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/assignments": [
+                {"id": 1, "name": "HW1", "due_at": "2026-10-22T15:59:59Z",
+                 "lock_at": "2026-10-23T00:00:00Z"},
+            ],
+        }
+        a = ntu_fetch.fetch_assignments(_FakeSession(routes), 9)[0]
+        self.assertNotEqual(a["due_at"], a["lock_at"])
+
+
+class TestFetchOwnSubmission(unittest.TestCase):
+    """`/submissions/self` returns 200; `/submissions?self=1` returns 403.
+
+    Same session, same credentials — only the path differs. Using the list
+    form makes every assignment look like a hard failure.
+    """
+
+    def test_uses_the_self_path(self):
+        seen = []
+
+        class S:
+            def get(self, url, **kw):
+                seen.append(url)
+                return _FakeResponse({"workflow_state": "submitted",
+                                       "submitted_at": "2026-10-20T10:00:00Z"})
+
+        out = ntu_fetch.fetch_own_submission(S(), 9, 411106)
+        self.assertEqual(out["workflow_state"], "submitted")
+        self.assertTrue(seen[0].endswith("/assignments/411106/submissions/self"),
+                        f"wrong path: {seen[0]}")
+        self.assertNotIn("?self=1", seen[0])
+
+    def test_missing_submission_is_none_not_an_exception(self):
+        class S:
+            def get(self, url, **kw):
+                return _FakeResponse({}, status=404)
+
+        self.assertIsNone(ntu_fetch.fetch_own_submission(S(), 9, 1))
+
+    def test_workflow_state_is_readable(self):
+        for state in ("unsubmitted", "submitted", "graded"):
+            class S:
+                def get(self, url, **kw):
+                    return _FakeResponse({"workflow_state": state})
+
+            self.assertEqual(
+                ntu_fetch.fetch_own_submission(S(), 9, 1)["workflow_state"], state)
+
+
+class TestFetchAssignmentHandouts(unittest.TestCase):
+    """CA handouts live in the assignment description, not the Files tree.
+
+    The link sits in a `data-api-endpoint` attribute whose href ends in
+    `/download` — not a file extension — so the attachment grep misses it.
+    """
+
+    DESC = (
+        '<p>see <a class="instructure_file_link" '
+        'href="https://cool.ntu.edu.tw/courses/9/files/10140367/download" '
+        'data-api-endpoint="https://cool.ntu.edu.tw/api/v1/courses/9/files/10140367" '
+        'data-api-returntype="File"><PREFIX>_CA3.zip</a></p>'
+    )
+
+    def test_finds_the_endpoint_in_the_description(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/assignments": [
+                {"id": 411108, "name": "CA3", "description": self.DESC},
+            ],
+        }
+        out = ntu_fetch.fetch_assignment_handouts(_FakeSession(routes), 9)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["assignment_id"], 411108)
+        self.assertTrue(out[0]["endpoint"].endswith("/files/10140367"))
+
+    def test_assignment_without_a_handout_yields_nothing(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/assignments": [
+                {"id": 1, "name": "Reading", "description": "<p>no file here</p>"},
+            ],
+        }
+        self.assertEqual(ntu_fetch.fetch_assignment_handouts(_FakeSession(routes), 9), [])
+
+    def test_missing_description_is_handled(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/assignments": [
+                {"id": 1, "name": "No description key at all"},
+            ],
+        }
+        self.assertEqual(ntu_fetch.fetch_assignment_handouts(_FakeSession(routes), 9), [])
+
+
+class TestFetchCoursePages(unittest.TestCase):
+    """Pages are addressed by slug, and the slug is on the module item."""
+
+    def test_collects_page_slugs_from_module_items(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/modules": [
+                {"id": 5, "name": "Week 1", "items": [
+                    {"type": "Page", "page_url": "ke-cheng-da-gang",
+                     "title": "課程大綱", "url": "https://x/pages/ke-cheng-da-gang"},
+                    {"type": "File", "title": "slide.pdf"},
+                ]},
+            ],
+        }
+        out = ntu_fetch.fetch_course_pages(_FakeSession(routes), 9)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["page_url"], "ke-cheng-da-gang")
+
+    def test_course_with_no_modules_yields_no_pages(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/modules": [],
+        }
+        self.assertEqual(ntu_fetch.fetch_course_pages(_FakeSession(routes), 9), [])
+
+    def test_asks_for_items_so_the_slugs_are_present(self):
+        """Regression: reading the modules without `include[]=items` returns
+        every `items` array empty, so the page list came back empty with no
+        error at all. The page slugs only exist on the module items.
+        """
+        seen = []
+
+        class S:
+            def get(self, url, params=None, **kw):
+                seen.append(params)
+                return _FakeResponse([
+                    {"id": 5, "name": "Week 1", "items": [
+                        {"type": "Page", "page_url": "ke-cheng-da-gang",
+                         "title": "課程大綱"},
+                    ]},
+                ])
+
+        out = ntu_fetch.fetch_course_pages(S(), 9)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]["page_url"], "ke-cheng-da-gang")
+        self.assertTrue(seen and seen[0], "no params were sent")
+        self.assertIn("include[]", seen[0],
+                      f"include[] was not requested: {seen[0]}")
+
+
+class TestFetchModules(unittest.TestCase):
+    def test_returns_modules_with_their_items(self):
+        routes = {
+            "https://cool.ntu.edu.tw/api/v1/courses/9/modules": [
+                {"id": 5, "name": "Week 1", "items": [{"type": "File"}]},
+            ],
+        }
+        out = ntu_fetch.fetch_modules(_FakeSession(routes), 9)
+        self.assertEqual(out[0]["name"], "Week 1")
+        self.assertEqual(len(out[0]["items"]), 1)
+
+    def test_asks_for_items_to_be_included(self):
+        """Without `include[]=items` the API returns modules with empty
+        `items` arrays — no error, just nothing. Measured against the live
+        site: 8 modules, 0 items without it, 6 items in the first module
+        with it.
+        """
+        seen = []
+
+        class S:
+            def get(self, url, params=None, **kw):
+                seen.append(params)
+                return _FakeResponse([{"id": 5, "name": "Week 1", "items": []}])
+
+        ntu_fetch.fetch_modules(S(), 9)
+        self.assertTrue(seen and seen[0], "no params were sent")
+        self.assertIn("include[]", seen[0],
+                      f"include[] was not requested: {seen[0]}")
+        self.assertEqual(seen[0]["include[]"], "items")
+
+
+class TestNoWriteOperations(unittest.TestCase):
+    """The tool is read-only. This is the guard that keeps it that way.
+
+    Uploading a submission is the user's own action in a browser. A POST or
+    PUT/PATCH/DELETE against course data would be a write against a university
+    system under the account of whoever runs this.
+
+    The login chain is the one legitimate POST: submitting a form to
+    authenticate is not a write to anything. So the guard is not "no POST
+    anywhere" — it is "no write on any course-data endpoint", and the
+    exemption for the login hops is explicit.
+    """
+
+    WRITE_METHODS = ("post", "put", "patch", "delete")
+
+    def test_fetch_functions_never_write(self):
+        """Every function that reads course data issues GET and nothing else.
+
+        `cool_login` is excluded on purpose: it POSTs the SAML form, which is
+        authentication, not a write to course data.
+        """
+        for name in ("fetch_courses", "fetch_all_courses_historical",
+                     "fetch_announcements", "fetch_course_files",
+                     "fetch_assignments", "fetch_own_submission",
+                     "fetch_course_pages", "fetch_modules",
+                     "fetch_assignment_handouts",
+                     "fetch_announcement_attachments"):
+            fn = getattr(ntu_fetch, name)
+            src = inspect.getsource(fn)
+            for m in self.WRITE_METHODS:
+                self.assertNotIn(f".{m}(", src,
+                                 f"{name}() issues a {m}() call")
+
+    def test_the_only_posts_are_in_the_login_chain(self):
+        """Locate every POST in the module and prove it is a login hop.
+
+        The two that must exist are the ADFS credential form and the SAML
+        response. A third POST anywhere would be a write.
+        """
+        src = pathlib.Path(ntu_fetch.__file__).read_text(encoding="utf-8")
+        post_lines = [(i, l) for i, l in enumerate(src.splitlines(), 1)
+                      if ".post(" in l]
+        self.assertTrue(post_lines, "the login chain should still POST")
+
+        fn = inspect.getsource(ntu_fetch.cool_login)
+        for m in self.WRITE_METHODS:
+            if m == "post":
+                continue
+            self.assertNotIn(f".{m}(", fn,
+                             f"cool_login() issues a {m}() call")
+
+        # every POST in the file lives inside cool_login
+        login_src = fn
+        outside = []
+        in_login = False
+        for i, l in enumerate(src.splitlines(), 1):
+            if l.startswith("def cool_login"):
+                in_login = True
+            elif in_login and l.startswith("def "):
+                in_login = False
+            if ".post(" in l and not in_login:
+                outside.append((i, l.strip()))
+        self.assertEqual(outside, [],
+                         f"a POST outside the login chain: {outside}")
+
+    def test_session_is_only_ever_asked_for_reads(self):
+        calls = []
+
+        class S:
+            def get(self, url, **kw):
+                calls.append(("GET", url))
+                return _FakeResponse([])
+
+            def __getattr__(self, name):
+                if name in self.WRITE_METHODS:
+                    def bad(*a, **kw):
+                        calls.append((name.upper(), a))
+                        raise AssertionError(f"{name}() was called")
+                    return bad
+                raise AttributeError(name)
+
+        ntu_fetch.fetch_assignments(S(), 9)
+        ntu_fetch.fetch_modules(S(), 9)
+        ntu_fetch.fetch_own_submission(S(), 9, 1)
+        self.assertTrue(all(c[0] == "GET" for c in calls),
+                        f"a non-GET call happened: {calls}")
 
 
 if __name__ == "__main__":
