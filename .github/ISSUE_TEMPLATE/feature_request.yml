@@ -1,0 +1,35 @@
+name: Feature request
+description: Suggest an improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the situation, not the implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you'd like to happen
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you've considered
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This must stay read-only — no writing, posting, or commenting on cool.ntu.edu.tw.
+          required: true
+        - label: This must keep the tool at one third-party dependency (requests).
+          required: false
+        - label: This must keep working on Python 3.9.
+          required: false
