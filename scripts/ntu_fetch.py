@@ -6,13 +6,13 @@ Design constraints, each one earned:
 * **No credential ever touches this file or a repo.** NTU_USER / NTU_PASS come from the
   environment, or from a JSON file the caller names with --cred-file. Nothing is written
   to disk by this script.
-* **Robust JSON parse.** Upstream does `json.loads(r.text[9:])` — a hardcoded byte offset
+* **Robust JSON parse.** A fixed-offset `json.loads(r.text[9:])` — a hardcoded byte offset
   with no documented reason. Against a 401 body it yields `:"unauthenticated",...` and a
   JSONDecodeError. We anchor on the first `{` or `[` instead, so a prefix may exist or not.
 * **Markdown output, not a database.** The digest pipeline already owns storage, dedupe,
   and delivery. Writing SQLite would create a second system for a one-endpoint need.
 * **Dry run before credentials.** --probe hits both platforms unauthenticated. If either
-  returns 404 the upstream moved and auth debugging is wasted effort.
+  returns 404 the platform moved and auth debugging is wasted effort.
 
   # no credentials, ever
   python3 ntu_fetch.py --probe
@@ -110,8 +110,25 @@ def _abs_action(form, base: str) -> str:
 def _session(retries: int = 2) -> requests.Session:
     """Session with backoff. The NTU login is credential-bearing: a tight retry
     loop on a wrong password is how accounts get locked, so retries are few,
-    spaced, and only on transport errors and 5xx — never on 401."""
+    spaced, and only on transport errors and 5xx — never on 401.
+
+    The explicit User-Agent is load-bearing, not decoration. cool.ntu.edu.tw and
+    adfs.ntu.edu.tw sit behind a filter that resets the connection at the TCP
+    level when the UA contains `python-requests`. Measured 2026-10-21 on the
+    same host, same URL, same TLS stack, minutes apart:
+        UA 'curl/8.18.0'        -> 200 (10847 bytes)
+        UA 'Python-urllib/3.12' -> 200
+        UA 'Mozilla/5.0'        -> 200
+        UA 'python-requests/2.32.5' -> ConnectionResetError(104)
+        UA 'curl/8.18.0 python-requests' -> ConnectionResetError(104)
+    So it matches the token anywhere in the header, and retrying the default UA
+    cannot succeed — 8 consecutive attempts all failed with exit 0 from curl and
+    stdlib urllib in the same minute. Every hop of the SAML chain (cool, ADFS,
+    and the API base) goes through this session, so the UA must be set here
+    rather than per-request.
+    """
     s = requests.Session()
+    s.headers.update({"User-Agent": USER_AGENT})
     retry = Retry(total=retries, backoff_factor=1.5,
                   status_forcelist=[502, 503, 504],
                   allowed_methods=frozenset(["GET"]))
@@ -133,7 +150,7 @@ def _assert_private_cred_file(path: str) -> None:
 def parse_json_loose(text: str):
     """Parse JSON that may carry a leading guard prefix.
 
-    Upstream slices a fixed 9 bytes; that is an undocumented offset and it fails on any
+    A fixed 9-byte slice is an undocumented offset and it fails on any
     body that does not happen to start with exactly those bytes. Anchoring on the first
     structural character is correct whether or not a prefix exists.
     """
@@ -148,9 +165,8 @@ def parse_json_loose(text: str):
 def cool_login(s: requests.Session, user: str, password: str) -> None:
     """Walk the cool.ntu.edu.tw -> ADFS -> cool SAML chain.
 
-    Sequence taken from brianbbsu/NTU-Announcement-Crawler. Each hop parses the form
-    actually served rather than assuming field names, except the two ASP.NET
-    credential fields which are stable.
+    Each hop parses the form actually served rather than assuming field names,
+    except the two ASP.NET credential fields which are stable.
     """
     r1 = s.get(f"{COOL}/login/saml", timeout=20)
     form1 = parse_first_form(r1.text)
@@ -176,7 +192,7 @@ def cool_login(s: requests.Session, user: str, password: str) -> None:
         raise RuntimeError(
             f"login did not take — after the ADFS round trip, "
             f"/api/v1/courses returned {check.status_code} (expected 200). "
-            "Either the SAML flow changed upstream, or the credentials are wrong. "
+            "Either the SAML flow changed, or the credentials are wrong. "
             "Nothing was written; nothing needs cleanup.")
 
 
@@ -449,7 +465,7 @@ class _FormOnly(HTMLParser):
     """Capture the first <form>'s action plus every input's name/value.
 
     "First" means first-in-document-order, matching BeautifulSoup's
-    `find("form")` — which is what the upstream code used. Login pages commonly
+    `find("form")` — which is what most parsers reach for. Login pages commonly
     park a hidden trap form early in <head>; waiting for a form to *close* picks
     that one instead of the real login form, so capture on opening tag and stop
     collecting once a second form starts.
@@ -570,7 +586,7 @@ def probe() -> int:
                 note = "  <- MOVED/DEAD"
                 critical_ok = False
             elif r.status_code >= 500:
-                note = "  <- upstream error"
+                note = "  <- platform error"
                 critical_ok = False
             print(f"  {name:28} HTTP {r.status_code}{note}")
         except Exception as e:

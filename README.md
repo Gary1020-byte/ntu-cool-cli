@@ -1,12 +1,20 @@
-# ntu-course-announcements
+# ntu-cool-cli
 
-Fetch NTU Cool course announcements and course files from the command line.
+Read-only command-line access to NTU Cool: course announcements, course
+files, CA handouts, and submission status.
 
 > 中文版: [README.zh-TW.md](README.zh-TW.md)
 
-Built after reading [`brianbbsu/NTU-Announcement-Crawler`](https://github.com/brianbbsu/NTU-Announcement-Crawler)
-and finding it unusable on a modern Python. Reimplemented as a single
-~700-line script with **one** third-party dependency.
+One CLI, four stores. Cool keeps a course's material in more than one place, and
+the obvious one is often empty:
+
+| what you want | where it actually is |
+|---|---|
+| what a course announced | `discussion_topics` — announcements and their attachments |
+| course files: handouts, worksheets, solutions, syllabus | the Files tree (`folders`) |
+| a CA handout, when the Files tree looks empty | the **assignment description** (`assignments`) |
+| lectures grouped by week | **modules** (`modules` → `modules/{id}/items`) |
+| whether your submission was accepted | `/submissions/self` |
 
 ```bash
 # no credentials — is the platform reachable?
@@ -16,12 +24,16 @@ python3 scripts/ntu_fetch.py --probe
 python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 ```
 
+**Read-only.** It logs in to read and never writes, posts, or comments on
+cool.ntu.edu.tw.
+
 ---
 
-## Why not just use the upstream crawler
+## Why not a service
 
-That project targets a 2019 interpreter and carries a Flask + SQLAlchemy + ORM
-service to answer a one-endpoint question. On Python 3.14 it fails three ways:
+A daemon that polls on a schedule and pushes to Telegram needs a persistent
+store, an ORM, and a migration surface — to answer a one-endpoint question.
+On Python 3.14 that stack fails three ways before it reaches the endpoint:
 
 ```
 ImportError: cannot import name 'Markup' from 'jinja2'          # Flask 1.0.2
@@ -29,40 +41,39 @@ AttributeError: module 'sqlite3.dbapi2' has no attribute 'version_info'   # SQLA
 TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 ```
 
-Upgrading Flask cascades into the SQLAlchemy break, which cascades into a mapper-API
-removal. The total patch surface is one file and four lines — which tells you the
-service is the problem, not the pins.
+Upgrading Flask cascades into the SQLAlchemy break, which cascades into a
+mapper-API removal. The total patch surface is one file and four lines — which
+tells you the service is the problem, not the pins.
 
 This script drops Flask, SQLAlchemy, and `beautifulsoup4` entirely. **The only
-third-party import is `requests`.** HTML parsing uses `html.parser` from the stdlib,
-because the two things needed from BeautifulSoup — "find a form, read its inputs"
-and "flatten visible text" — are twenty lines of `HTMLParser`.
+third-party import is `requests`.** HTML parsing uses `html.parser` from the
+stdlib, because the two things needed from BeautifulSoup — "find a form, read
+its inputs" and "flatten visible text" — are twenty lines of `HTMLParser`.
 
-None of this is a fork. The upstream repo has no LICENSE file, so it cannot be
-redistributed — nothing was copied from it, and what was learned from reading its
-source is credited in [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md).
+Fetching is also the honest scope: a script that reads and exits has nothing to
+keep in sync. Storage, dedupe, and delivery belong to whatever runs it.
 
 ---
 
 ## Install
 
-As a command — this gives you `ntu-cool` on your PATH:
+As a command — this gives you `ntu-cool-cli` on your PATH:
 
 ```bash
-git clone https://github.com/Gary1020-byte/ntu-course-announcements.git
-cd ntu-course-announcements
+git clone https://github.com/Gary1020-byte/ntu-cool-cli.git
+cd ntu-cool-cli
 pipx install .          # or: uv tool install .  /  python3 -m pip install --user .
-ntu-cool --probe
+ntu-cool-cli --probe
 ```
 
-The module is `ntu_fetch`, the command is `ntu-cool`, and both do exactly the
-same thing — `ntu-cool --help` and `python3 scripts/ntu_fetch.py --help` are
+The module is `ntu_fetch`, the command is `ntu-cool-cli`, and both do exactly the
+same thing — `ntu-cool-cli --help` and `python3 scripts/ntu_fetch.py --help` are
 identical. Use whichever suits; the script needs no install at all.
 
 Requires Python 3.9+ and `requests`. Verify:
 
 ```bash
-ntu-cool --probe
+ntu-cool-cli --probe
 ```
 
 ### Tests
@@ -231,7 +242,7 @@ the same display name never collide.
 | downloads are really PDFs | magic-checked per file |
 | nothing is silently dropped | verified — pagination followed via `Link` |
 | Ceiba reachability | **varies by network** — see `references/ceiba-unreachable.md` |
-| Ceiba scraping | not implemented; the upstream positional table parser is unverified |
+| Ceiba scraping | not implemented; the positional table parser is unverified |
 
 **A download reporting `OK` has passed both checks.** Cool answers an expired signed
 URL with HTTP 200 carrying the login page, so status code alone proves nothing —
@@ -273,10 +284,10 @@ That is a network-access question, not a code one — see
 ```
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
-pyproject.toml                        makes `ntu-cool` installable
+pyproject.toml                        makes `ntu-cool-cli` installable
 tests/test_ntu_fetch.py               52 offline tests, no network
-ACKNOWLEDGEMENTS.md                   what came from the upstream project
-references/upstream-findings.md       why the 2019 crawler was not adopted as-is
+ACKNOWLEDGEMENTS.md                   attribution and licensing notes
+references/api-findings.md           what the platform actually returns
 references/ceiba-unreachable.md       reachability control test
 references/testing-and-interpreters.md  the venv-vs-system-python trap
 ```
