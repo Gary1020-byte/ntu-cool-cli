@@ -1,0 +1,16 @@
+version: 2
+
+updates:
+  # The project has one runtime dependency (requests), plus the CI actions
+  # themselves, which do get updated.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 5
