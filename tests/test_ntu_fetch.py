@@ -25,7 +25,7 @@ import ntu_fetch  # noqa: E402
 
 
 class TestParseJsonLoose(unittest.TestCase):
-    """The upstream `json.loads(r.text[9:])` had no documented reason for 9.
+    """A fixed-offset `json.loads(r.text[9:])` has no documented reason for 9.
     Our parser anchors on the first `{` or `[`, so a prefix may exist or not."""
 
     def test_bare_object(self):
@@ -38,7 +38,7 @@ class TestParseJsonLoose(unittest.TestCase):
         self.assertEqual(ntu_fetch.parse_json_loose('while(1);{"a": 1}'), {"a": 1})
 
     def test_prefix_of_length_nine(self):
-        # The exact case the upstream slice handled and nothing else did.
+        # The exact case a fixed slice handles and nothing else does.
         self.assertEqual(ntu_fetch.parse_json_loose('someprexx{"a": 1}'), {"a": 1})
 
     def test_auth_failure_body(self):

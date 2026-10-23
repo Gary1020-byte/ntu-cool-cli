@@ -7,10 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-23
+
+### Changed
+
+- **Renamed to `ntu-cool-cli`.** The previous name, `ntu-course-announcements`,
+  described only one of four things the tool reaches. It also fetches course
+  files, CA handouts that live in assignment descriptions rather than the
+  Files tree, and submission status. `cool` is how NTU students already refer
+  to the platform, and `cli` says what kind of thing it is.
+  - PyPI package: `ntu-course-announcements` → `ntu-cool-cli`
+  - Console script: `ntu-cool` → `ntu-cool-cli`
+  - The module stays `ntu_fetch`; `python3 scripts/ntu_fetch.py` still works.
+  - GitHub redirects the old repository URL to the new one.
+- `SKILL.md` now documents all four stores — announcements, the Files tree,
+  assignment descriptions, and modules — with the submission-status endpoint,
+  and the trigger list covers the file and submission cases, not just
+  announcements.
+- Synced three sections that existed only in the locally-installed copy of the
+  skill: the User-Agent filter, exam scope in the worksheet pairing, and CA
+  handouts in the assignment description.
+- Added `references/computer-assignment-retrieval.md` and
+  `references/manifest-status.md`.
+- `references/upstream-findings.md` became `references/api-findings.md`. The
+  content was about the platform's real response shapes — the pagination
+  contract, the User-Agent filter, the credential shape — but it was written as
+  a review of one particular project. It is now written as facts about the
+  platform, which is what it actually measured. `ACKNOWLEDGEMENTS.md` keeps the
+  attribution and the no-code-copied statement, which is the part that matters
+  for licensing: that project carries no LICENSE file, so nothing from it may
+  be redistributed.
+
+### Fixed
+
+- **The session User-Agent was never applied.** `USER_AGENT` was defined at the
+  top of the script and then not set on the session, so every request went out
+  with `python-requests/2.x`. cool.ntu.edu.tw and adfs.ntu.edu.tw reset the
+  connection at the TCP level when that token appears anywhere in the header —
+  which reads as "the host is down" rather than "we are being filtered".
+  Retrying cannot fix it. Measured 2026-10-21: `curl/8.18.0` → HTTP 200 in the
+  same minute that `python-requests/2.32.5` → `ConnectionResetError(104)`.
+  Now set in `_session()`, so every hop of the SAML chain carries it.
+
 ## [1.0.0] - 2026-10-23
 
-First release. The tool is a read-only fetcher for NTU Cool course announcements
-and course files.
+First release, under the name `ntu-course-announcements`. The tool is a
+read-only fetcher for NTU Cool course announcements and course files.
 
 ### Added
 
@@ -24,7 +66,7 @@ and course files.
   cool.ntu.edu.tw.
 - CI on Python 3.9, 3.10, 3.11, 3.12.
 - `SKILL.md` — the rulebook: verification status, traps, workflow.
-- `references/` — upstream findings, the Ceiba reachability control test, and
+- `references/` — platform findings, the Ceiba reachability control test, and
   the venv-vs-system-Python trap.
 
 ### Fixed
@@ -33,8 +75,9 @@ and course files.
   wrong field, so a page of results was skipped.
 - The JSON prefix was hardcoded as `r.text[9:]` with no documented reason. The
   parser now anchors on the first `{` or `[`, so a prefix may exist or not.
-- A false claim in `ACKNOWLEDGEMENTS.md` about the upstream project.
+- A false claim in `ACKNOWLEDGEMENTS.md` about the project it was derived from.
 - The author's own course roster was removed from every tracked file.
 
-[Unreleased]: https://github.com/Gary1020-byte/ntu-course-announcements/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/Gary1020-byte/ntu-course-announcements/releases/tag/v1.0.0
+[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/Gary1020-byte/ntu-cool-cli/releases/tag/v1.0.0

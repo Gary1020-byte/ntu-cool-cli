@@ -1,9 +1,19 @@
-# ntu-course-announcements
+# ntu-cool-cli
 
-用 command line抓 NTU Cool 的課程公告與課程檔案。
+用 command line 讀 NTU Cool 的課程公告、課程檔案、CA handout 與繳交狀態。
 
-這個專案的起源是讀了 [`brianbbsu/NTU-Announcement-Crawler`](https://github.com/brianbbsu/NTU-Announcement-Crawler)，
-然後發現它在現代 Python 上跑不起來。重寫成單一 ~700 行腳本，**只有一個**第三方依賴。
+> English version: [README.md](README.md)
+
+一個 CLI，四個資料來源。Cool 把一門課的東西分散在不同地方，而最直覺的那個
+常常是空的：
+
+| 你要找的 | 實際在哪 |
+|---|---|
+| 這門課公告了什麼 | `discussion_topics` —— 公告與其附件 |
+| 課程檔案：講義、worksheet、解答、大綱 | Files tree（`folders`）|
+| CA handout（當 Files tree 看起來是空的）| **作業描述**（`assignments`）|
+| 依週分組的 lecture | **modules**（`modules` → `modules/{id}/items`）|
+| 我的作業繳交了沒 | `/submissions/self` |
 
 ```bash
 # 不用帳密 —— 先確認平台連不連得上
@@ -13,14 +23,15 @@ python3 scripts/ntu_fetch.py --probe
 python3 scripts/ntu_fetch.py --list-files --course <COURSE> --cred-file ~/.ntu-creds.json
 ```
 
-> English version: [README.md](README.md)
+**唯讀。** 它只登入讀取，不會寫入、不會發文、不會留言。
+要上傳作業是你自己在瀏覽器裡做的事。
 
 ---
 
-## 為什麼不直接用上游那份
+## 為什麼不做成一個常駐服務
 
-上游專案是為 2019 年的 Python 版本寫的，帶著 Flask + SQLAlchemy + ORM service，
-只為了讀一個 JSON endpoint。在 Python 3.14 上三處失敗：
+一個定時輪詢、推 Telegram 的 daemon，需要資料庫、ORM 跟 migration，
+只為了回答一個 endpoint 的問題。在 Python 3.14 上那套堆疊會先三處失敗：
 
 ```
 ImportError: cannot import name 'Markup' from 'jinja2'          # Flask 1.0.2
@@ -36,31 +47,32 @@ TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 因為真的需要 BeautifulSoup 的只有兩件事 —— 「找一個表單、讀它的 input」
 跟「把可見文字攤平」—— 那就是二十行程式碼的 `HTMLParser`。
 
-這**不是 fork**。上游專案沒有 LICENSE 檔，因此不能轉載 ——
-本專案沒有從它複製任何程式碼，
-從讀它的原始碼學到的東西都列在 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
+抓取本身就是合理的範圍：一個讀完就退出的腳本沒有任何東西需要同步。
+儲存、去重、投遞都屬於執行它的那一層。
+
+出處與授權說明在 [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md)。
 
 ---
 
 ## 安裝
 
-當成指令用 —— 裝完 PATH 上會有 `ntu-cool`：
+當成指令用 —— 裝完 PATH 上會有 `ntu-cool-cli`：
 
 ```bash
-git clone https://github.com/Gary1020-byte/ntu-course-announcements.git
-cd ntu-course-announcements
+git clone https://github.com/Gary1020-byte/ntu-cool-cli.git
+cd ntu-cool-cli
 pipx install .          # 或：uv tool install .  /  python3 -m pip install --user .
-ntu-cool --probe
+ntu-cool-cli --probe
 ```
 
-模組叫 `ntu_fetch`，指令叫 `ntu-cool`，兩者做完全一樣的事 ——
-`ntu-cool --help` 跟 `python3 scripts/ntu_fetch.py --help` 輸出相同。
+模組叫 `ntu_fetch`，指令叫 `ntu-cool-cli`，兩者做完全一樣的事 ——
+`ntu-cool-cli --help` 跟 `python3 scripts/ntu_fetch.py --help` 輸出相同。
 看你要哪個；那個 script 根本不需要安裝就能跑。
 
 需要 Python 3.9+ 與 `requests`。驗證：
 
 ```bash
-ntu-cool --probe
+ntu-cool-cli --probe
 ```
 
 ### 測試
@@ -262,10 +274,10 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 ```
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
-pyproject.toml                        讓 `ntu-cool` 變成可安裝指令
+pyproject.toml                        讓 `ntu-cool-cli` 變成可安裝指令
 tests/test_ntu_fetch.py               52 個離線測試，不連網路
 ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
-references/upstream-findings.md       為什麼沒有直接沿用那份 2019 的程式
+references/api-findings.md            平台實際回傳什麼
 references/ceiba-unreachable.md       可達性對照實驗
 references/testing-and-interpreters.md  venv 和系統 Python 的坑
 ```
