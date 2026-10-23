@@ -383,6 +383,92 @@ def fetch_course_files(s: requests.Session, course_id) -> list[dict]:
     return out
 
 
+def fetch_assignments(s: requests.Session, course_id) -> list[dict]:
+    """The homework roster for a course.
+
+    `/assignments` is the assignment list — the syllabus is not. Each entry
+    carries `due_at`, `lock_at`, `points_possible`, and (in the description) a
+    `data-api-endpoint` link to the handout, which is where CA material lives
+    when the Files tree is empty.
+    """
+    return _paged_get(s, f"{API}/courses/{course_id}/assignments",
+                      params={"per_page": 100})
+
+
+def fetch_own_submission(s: requests.Session, course_id, assignment_id) -> dict | None:
+    """Your own submission for one assignment, or None if never handed in.
+
+    The path matters: `/submissions/self` returns 200, while the list form
+    `/submissions?self=1` returns 403 on every assignment. Same session, same
+    credentials — only the path differs.
+
+    Fields worth reading: `workflow_state` (unsubmitted / submitted / graded),
+    `submitted_at` (UTC), `score`, `late_policy_status`, and the assignment's
+    own `due_at` / `lock_at`. A `lock_at` in the past means the upload window
+    is closed — `seconds_late` keeps counting on an unsubmitted assignment and
+    is not evidence that you can still turn it in.
+    """
+    r = s.get(f"{API}/courses/{course_id}/assignments/{assignment_id}/submissions/self",
+              timeout=30)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    try:
+        return parse_json_loose(r.text)
+    except ValueError:
+        return None
+
+
+def fetch_course_pages(s: requests.Session, course_id) -> list[dict]:
+    """Course pages — the syllabus, the calendar, the late-submission policy.
+
+    Pages are addressed by slug, and the slug lives on the module item
+    (`page_url`), not on the page object itself.
+
+    This reads the modules rather than the pages endpoint: the module list is
+    where the page items live, and it only carries them when
+    `include[]=items` is asked for. Reading the modules without that parameter
+    returns every `items` array empty — no error, just nothing.
+    """
+    out: list[dict] = []
+    for m in fetch_modules(s, course_id):
+        for item in (m.get("items") or []):
+            if item.get("type") == "Page" and item.get("page_url"):
+                out.append(item)
+    return out
+
+
+def fetch_modules(s: requests.Session, course_id) -> list[dict]:
+    """Modules — lectures grouped by week, and the pages hanging off them.
+
+    `include[]=items` is required: without it the module list comes back with
+    every `items` array empty, and a caller that reads `items` sees nothing at
+    all — no error, just a blank list.
+    """
+    return _paged_get(s, f"{API}/courses/{course_id}/modules",
+                      params={"per_page": 100, "include[]": "items"})
+
+
+def fetch_assignment_handouts(s: requests.Session, course_id) -> list[dict]:
+    """Handout links that live in assignment descriptions rather than the Files tree.
+
+    The description is HTML and the file id sits in a `data-api-endpoint`
+    attribute, whose href ends in `/download` rather than a file extension —
+    so the attachment grep does not find it. The endpoint answers with JSON
+    describing the file, not the bytes; the signed `url` is inside that JSON.
+    """
+    out: list[dict] = []
+    for a in fetch_assignments(s, course_id):
+        for m in re.finditer(r'data-api-endpoint="([^"]+)"',
+                             a.get("description") or ""):
+            out.append({
+                "assignment_id": a.get("id"),
+                "assignment_name": a.get("name"),
+                "endpoint": m.group(1),
+            })
+    return out
+
+
 def fetch_announcement_attachments(s: requests.Session, topics: list[dict]) -> list[dict]:
     """Files attached directly to announcements (a smaller, separate set).
 
@@ -631,6 +717,17 @@ def main() -> int:
                     help="download every file in the Files section")
     ap.add_argument("--max-mb", type=float, default=0.0,
                     help="with --download-files: skip files larger than this")
+    ap.add_argument("--list-assignments", action="store_true",
+                    help="list the homework roster (/assignments): name, due, lock, points")
+    ap.add_argument("--list-submissions", action="store_true",
+                    help="list your own submission status per assignment (read-only)")
+    ap.add_argument("--list-pages", action="store_true",
+                    help="list course pages: syllabus, calendar, late-submission policy")
+    ap.add_argument("--list-modules", action="store_true",
+                    help="list modules — lectures grouped by week")
+    ap.add_argument("--list-handouts", action="store_true",
+                    help="list handout links found in assignment descriptions "
+                         "(where CA material lives when the Files tree is empty)")
     args = ap.parse_args()
 
     if args.probe:
@@ -657,6 +754,75 @@ def main() -> int:
         print("login OK", file=sys.stderr)
 
         courses = fetch_courses(s)
+
+        # ---- course-scoped list modes, all read-only ----
+        if (args.list_assignments or args.list_submissions or args.list_pages
+                or args.list_modules or args.list_handouts):
+            picked = courses if args.all_courses else [
+                c for c in courses
+                if any(find_course([c], n) for n in args.course)]
+            if not picked:
+                ap.error("no course matched --course")
+            for c in picked:
+                cname = c.get("name") or str(c.get("id"))
+                cid = c.get("id")
+                if args.list_assignments or args.list_submissions:
+                    try:
+                        assigns = fetch_assignments(s, cid)
+                    except Exception as e:
+                        print(f"{str(cname)[:30]:32} FAIL {type(e).__name__}: {e}",
+                              file=sys.stderr)
+                        continue
+                    for a in assigns:
+                        due = a.get("due_at") or ""
+                        lock = a.get("lock_at") or ""
+                        pts = a.get("points_possible")
+                        line = (f"  [{a.get('id')}] {str(a.get('name'))[:44]:46} "
+                                f"due {due[:16]:18} lock {lock[:16]:18}")
+                        if pts is not None:
+                            line += f" {pts} pts"
+                        if args.list_submissions:
+                            sub = fetch_own_submission(s, cid, a.get("id"))
+                            if sub is None:
+                                state = "not-found"
+                            else:
+                                state = str(sub.get("workflow_state") or "?")
+                                if sub.get("score") is not None:
+                                    state += f" score={sub['score']}"
+                                if sub.get("late_policy_status"):
+                                    state += f" {sub['late_policy_status']}"
+                            line += f"  [{state}]"
+                        print(line)
+                if args.list_modules:
+                    try:
+                        mods = fetch_modules(s, cid)
+                    except Exception as e:
+                        print(f"  modules FAIL {type(e).__name__}: {e}", file=sys.stderr)
+                        continue
+                    for m in mods:
+                        print(f"  module {m.get('id')} {str(m.get('name'))[:50]}")
+                        for it in (m.get("items") or []):
+                            print(f"      {str(it.get('type')):12} "
+                                  f"{str(it.get('title') or it.get('page_url'))[:50]}")
+                if args.list_pages:
+                    try:
+                        pages = fetch_course_pages(s, cid)
+                    except Exception as e:
+                        print(f"  pages FAIL {type(e).__name__}: {e}", file=sys.stderr)
+                        continue
+                    for p in pages:
+                        print(f"  page {str(p.get('page_url'))[:60]:62} "
+                              f"{str(p.get('title'))[:40]}")
+                if args.list_handouts:
+                    try:
+                        handouts = fetch_assignment_handouts(s, cid)
+                    except Exception as e:
+                        print(f"  handouts FAIL {type(e).__name__}: {e}", file=sys.stderr)
+                        continue
+                    for h in handouts:
+                        print(f"  [{h.get('assignment_id')}] "
+                              f"{str(h.get('assignment_name'))[:40]:42} {h['endpoint']}")
+            return 0
 
         # ---- files mode short-circuits the announcement pipeline ----
         if args.list_files or args.download_files:
