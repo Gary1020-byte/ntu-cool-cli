@@ -47,8 +47,8 @@ TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 當成指令用 —— 裝完 PATH 上會有 `ntu-cool`：
 
 ```bash
-git clone <this-repo>
-cd ntu-cool-announcements-skill
+git clone https://github.com/Gary1020-byte/ntu-course-announcements.git
+cd ntu-course-announcements
 pipx install .          # 或：uv tool install .  /  python3 -m pip install --user .
 ntu-cool --probe
 ```
