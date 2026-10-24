@@ -1,0 +1,38 @@
+name: Publish to PyPI
+
+# Publishing is irreversible on PyPI — a filename cannot be re-uploaded under
+# the same version, and a version cannot be deleted. So this workflow only
+# runs on an explicit version tag, and only after the tag already exists on
+# the release commit.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # trusted publishing (OIDC) — no long-lived token needed
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: |
+          python3 -m pip install --upgrade pip build twine
+          python3 -m build
+
+      - name: Check the distributions
+        # twine check catches README rendering problems, which is what PyPI
+        # shows on the package page.
+        run: python3 -m twine check dist/*
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
