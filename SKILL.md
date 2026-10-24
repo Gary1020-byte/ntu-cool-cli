@@ -55,9 +55,12 @@ Do not merge them.
 | `/api/v1/courses` lists your CURRENT courses | **FALSE — it does not.** See below. This is the biggest trap in this skill. |
 | `json.loads(r.text[9:])` slice | **verified suspect** — our parser handles prefixes correctly |
 | Ceiba reachable from this host | **NO** — connection timeout, see below |
+| requests' default UA is refused by NTU | **verified** — `python-requests` in the UA → TCP reset; `curl`/`Python-urllib`/`Mozilla` → 200. See below |
+| CA handouts are reachable | **verified** — DS CA2/CA3 found in assignment-description HTML, not the Files tree; see below |
 | Ceiba table-parsing paths | **UNVERIFIED AND UNREACHABLE** — moot until reachability is restored |
 | course FILES (handouts, worksheets, solutions) | **verified** — `fetch_course_files()`, 91 files across the current term, 96 with announcement attachments |
 | announcement attachments | **verified** — 5 more, separate from the Files tree |
+| every list endpoint is paginated at 10 | **verified** — this silently loses files; see § Pagination |
 
 Verified against the live site: the API returned 10 courses whose newest announcement
 was three months stale, omitted three current-term courses including one of them
@@ -339,6 +342,26 @@ extraction reporting nothing means the layer is empty, **not** that the content 
 absent — render to PNG at ~140 dpi and read the image. Never file such a PDF as
 unusable on the strength of one extraction path.
 
+### Pagination is the trap that silently loses files
+
+Canvas defaults to `per_page=10` and caps the parameter. A folder holding 29 files
+answers 10 — **no error, no empty-looking tail**. Across one term that was 27 of 91 files
+missing.
+
+Follow `Link: <...>; rel="next"` from the response headers. Do not "fix" it with a bigger
+`per_page` and assume it took; the Link header is the only pagination contract the API
+honours. `_paged_get()` in `scripts/ntu_fetch.py` does this.
+
+**A verification that runs the same code on both sides proves only symmetry.** A
+dedupe check comparing two runs of one implementation reported 64 = 64 and passed while
+both sides were still truncating at 10. Assert the two independent properties separately:
+no duplicates *and* nothing missing (raise `per_page`, or compare against a second entry
+point such as the parentless-list fallback).
+
+Files are grouped in meaningful folders — `course files/homework/hw4`,
+`course files/lectures/20261007` — which is how you tell a homework set from a lecture
+handout without reading either.
+
 ### Verify the list before downloading the whole term
 
 ```bash
@@ -436,7 +459,8 @@ Mechanics, not the course being taught. Re-run with `--course <name>` when the a
 course:
 
 ```bash
-python3 scripts/ntu_fetch.py --course a course --all --stdout 2>/dev/null | grep -A3 '^## '
+python3 scripts/ntu_fetch.py --cred-file ~/.ntu-creds.json \
+    --course <course-name> --since 2026-06-01 --stdout 2>/dev/null | grep -A3 '^## '
 ```
 
 Cheap, and it is the difference between the right exam date and a neighbour's.
