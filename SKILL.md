@@ -1065,6 +1065,133 @@ is what an inbox is for.
 Do not run a Flask daemon. It is a second always-on service for a one-endpoint
 need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
 
+### A fact copied N times drifts N ways — generate the table, check mechanically
+
+A course fact (exam date, scope, submission deadline) gets copied into many vault
+files: the capture folder, the operation log, the concept, entity, task, project and
+overview pages, and the index. Every copy is written by hand, and nothing keeps them equal.
+
+Measured 2026-10-23 on a real vault (751 wiki pages):
+
+| fact | copies |
+|---|---|
+| <COURSE> 期 midterm | 16 |
+| <COURSE> 期 midterm | 29 |
+| <COURSE> 期中考一 10/14 | 11 |
+| <COURSE> 期 midterm | 7 |
+
+One moved deadline had reached 9 files; one wrong exam scope had reached 7.
+**The cost of a correction is the copy count, not the edit.**
+
+The fix is not "be careful" — it is a generated table plus a mechanical comparison:
+
+```
+fetch_courses.py    → data/course_facts.json  (gitignored, rebuildable)
+drift_check.py      → scans live pages, reports mismatches, edits nothing
+cron                → refresh + check every morning
+```
+
+Two design rules that matter:
+
+1. **The table is a build artifact, not a page.** Put it in the same place as the
+   other generated data (`data/*.json`, gitignored). A hand-maintained "source of
+   truth" page is just one more copy to drift.
+2. **The checker reports; it does not fix.** It cannot tell whether a line asserts
+   a fact or narrates a change to it, so the verdict is his.
+
+**Exclude the capture folder and the operation log.** They are append-only history, and "we used to
+believe HW2 was 10/30" is *correct*. Counting them produces a report full of
+false alarms, and a report that is always noisy is a report that gets ignored.
+
+**Four false-positive guards, each learned from a real false positive:**
+
+| symptom | guard |
+|---|---|
+| 「HW1」 exists in three courses with different dates | a name shared by several courses requires the *line* to name the course |
+| 「期中考」 is generic | generic exam names (期中考/期末考/模擬考) are ALWAYS ambiguous |
+| 「10/23 → 10/30」 narrates a change and is correct | lines with →/改成/原為/修正 are not drift |
+| a date inside a capture file's name is a filename | strip path tokens before matching |
+| 「我先前寫…是錯的」 quotes the stale value | lines with negation/correction wording are not drift |
+| 「due 10/29、lock 10/30」 states two different facts | a `lock_at` date is not a `due_at` date |
+
+A checker that reports zero must be *proven* to detect drift: inject a known-stale
+value into a live page, confirm it fires, revert. A checker that has only ever
+reported "clean" is untested.
+
+### The scope you cannot fetch is the scope you must read
+
+Some exam scope is not in the API at all. For <COURSE>, the scope had to be
+derived from the syllabus's per-week `Reading -> G.T.M.: pp. X~Y` lines, and
+**mapping page ranges to chapters needs the book's own running headers**, not its
+table of contents:
+
+```python
+# for each range, read the first and last page's running header
+# "9.2.2 Hash Functions" / "Chapter 5. Stacks, Queues, and Deques"
+doc = pymupdf.open(book)
+hdr = doc[printed + offset].get_text().split("\n")[0]
+```
+
+The TOC parse failed on a 738-page PDF (the dot leaders and page numbers are
+extracted in an unusable order), and the first header-based attempt produced
+false chapters because it matched a number at the top of any page. Reading the
+header of a *known* page and confirming the range's endpoints against it is what
+made the mapping trustworthy.
+
+**The result is worth checking by hand, because a wrong scope is silent.** The
+header-based mapping found that the recorded midterm scope (5 chapters) was
+missing three: Stacks/Queues (Ch5), Trees (Ch7), and Memory Management (Ch14).
+Ch14 is the one that is easy to lose — it is the W6 reading, a six-page range
+(666-671) inside a chapter about garbage collection, sitting in a week titled
+「Binary Search and Inheritance」 where nobody expects it.
+
+### The roster answers 「what year is he in?」 without asking
+
+The current-term roster is a read-only fact about which academic term the
+student is in, and the term label is right there in the homepage JSON
+(`"term": "115-1 (2026 Fall)"`). A course set that is unmistakably a
+particular stage (junior-level engineering courses, not capstone-level ones)
+cross-checks the term.
+
+**Use it as an independent cross-check, not as the primary source.** The
+student ID's year digits and the course roster are two different routes to the
+same answer; agreement between them is what makes the answer a fact rather
+than a coincidence of one bad lookup. When they disagree, the disagreement is
+the finding — report which reading each source supports instead of picking
+one.
+
+**The roster sweep also answers 「what did he already hand in?」 in one pass.**
+`--list-submissions` over every current course returns each assignment's
+`workflow_state` — so it covers the assignments that are *not* in any
+announcement, and the graded ones alongside the unsubmitted ones. That makes
+it the cheap way to discover both a finished submission (so you stop telling
+him to do it) and a missed one (so you do not).
+
+### The `submission_types` field tells you whether it can be done online
+
+`submission_types` distinguishes `online_upload` (upload before the
+`lock_at`) from `on_paper` (hand it in physically, to a person, at a place).
+The two have completely different failure modes, and a plan that treats an
+`on_paper` assignment as an upload will be wrong about the deadline: the
+physical hand-in has to happen while someone is there to receive it, which is
+a wall-clock constraint the API's `due_at` does not capture. Report the
+distinction explicitly, and when an `on_paper` item shares a date with an
+online item, the physical one is the one to schedule first.
+
+Two facts to carry into the report rather than into a task body as settled:
+
+**a course with zero announcements this term may still have all its material**, in the
+Files tree and already downloaded. Check the local captures before treating a missing
+announcement as a gap. A task whose stated premise is 「unknown」 when the answer was
+already on disk is worse than no task.
+
+**a deadline in an announcement is not automatically an action item.** Same reasoning,
+different source: an announcement states a date, the decision to act on it is the
+user's. That is what an inbox is for.
+
+Do not run a Flask daemon. It is a second always-on service for a one-endpoint
+need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
+
 ## Reference
 
 - `references/api-findings.md` — the platform's real response shapes, the pagination
