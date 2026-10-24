@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.2] - 2026-10-25
+
+### Changed
+
+- The install command is now in the **first screen** of both READMEs — the
+  `pipx install ntu-cool-cli` block sits directly under the one-paragraph
+  description, above the 「四個資料來源」 table. PyPI renders the README as
+  the package page's long description, so the install command used to be
+  below the fold for anyone who arrived from the index.
+- Added PyPI / Python-version / license badges to the top of both READMEs.
+
 ## [1.3.1] - 2026-10-25
 
 ### Added
