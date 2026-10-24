@@ -98,7 +98,8 @@ in the file is in the SAML login chain, which is authentication, not a write.
   files, CA handouts that live in assignment descriptions rather than the
   Files tree, and submission status. `cool` is how NTU students already refer
   to the platform, and `cli` says what kind of thing it is.
-  - PyPI package: `ntu-course-announcements` → `ntu-cool-cli`
+  - Package name: `ntu-course-announcements` → `ntu-cool-cli`
+    (never published to PyPI — install from Git)
   - Console script: `ntu-cool` → `ntu-cool-cli`
   - The module stays `ntu_fetch`; `python3 scripts/ntu_fetch.py` still works.
   - GitHub redirects the old repository URL to the new one.

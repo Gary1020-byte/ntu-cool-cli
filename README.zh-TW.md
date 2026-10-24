@@ -59,7 +59,21 @@ TypeError: Mapper.__init__() got an unexpected keyword argument 'order_by'
 
 ## 安裝
 
-當成指令用 —— 裝完 PATH 上會有 `ntu-cool-cli`：
+當成指令用 —— 裝完 PATH 上會有 `ntu-cool-cli`。
+
+**它沒有上架 PyPI。** 套件名 `ntu-cool-cli` 只存在於這個 repo 的
+`pyproject.toml`，PyPI 上沒有任何發行版，所以 `pipx install ntu-cool-cli`
+與 `uv tool install ntu-cool-cli` 都會失敗（no matching distribution）。
+改用 Git 來源安裝：
+
+```bash
+# 直接從 Git 裝 —— 不需要先 clone
+uv tool install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'
+# 或用 pipx：
+pipx install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'
+```
+
+或從本機 checkout 裝：
 
 ```bash
 git clone https://github.com/Gary1020-byte/ntu-cool-cli.git
@@ -321,7 +335,11 @@ signed URL 在裡面），檔案會用真實檔名存檔。
 
 接著：
   - clone 這個 repo
-  - 安裝 `ntu-cool-cli` 套件
+  - 安裝 `ntu-cool-cli` 套件。它**沒有上架 PyPI** —— 請用 Git 來源安裝：
+    `uv tool install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'`
+    （或 `pipx install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'`、
+    或在 clone 內執行 `pipx install .`）。`pipx install ntu-cool-cli` 會失敗 ——
+    PyPI 上沒有這個發行版。
   - 讀 SKILL.md，只保留我選的那些功能對應的章節
   - 告訴我怎麼提供憑證。優先用環境變數 NTU_USER 與 NTU_PASS —— 不落地、
     也不會留在 shell history。另一種是一個有 ntu_user / ntu_pass 的 JSON
