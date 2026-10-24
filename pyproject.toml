@@ -1,19 +1,45 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "ntu-cool-cli"
-version = "1.3.0"
+version = "1.3.1"
 description = "Read-only CLI for NTU Cool: course announcements, course files, handouts, and submission status."
 readme = "README.md"
 requires-python = ">=3.9"
-license = { file = "LICENSE" }
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+  { name = "Gary Xie", email = "gary.1020.xie@gmail.com" },
+]
 keywords = [
   "ntu", "cool", "ceiba", "cli", "announcements", "course", "files",
   "homework", "handout", "student", "scraper", "read-only",
 ]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Education",
+  "Natural Language :: English",
+  "Natural Language :: Chinese (Traditional)",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Education",
+  "Topic :: Utilities",
+]
 dependencies = ["requests>=2.28"]
+
+[project.urls]
+Homepage = "https://github.com/Gary1020-byte/ntu-cool-cli"
+Repository = "https://github.com/Gary1020-byte/ntu-cool-cli"
+Issues = "https://github.com/Gary1020-byte/ntu-cool-cli/issues"
+Changelog = "https://github.com/Gary1020-byte/ntu-cool-cli/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ntu-cool-cli = "ntu_fetch:main"

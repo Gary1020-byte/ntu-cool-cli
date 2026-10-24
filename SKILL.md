@@ -202,7 +202,8 @@ a password.**
 
 Installed as a command it is `ntu-cool-cli`; uninstalled it is
 `python3 scripts/ntu_fetch.py`. Same tool, same flags, interchangeable. The
-package is not on PyPI — install it from Git:
+package is on PyPI: `pipx install ntu-cool-cli` (or `uv tool install
+ntu-cool-cli`). To install the unreleased tip from Git instead:
 `uv tool install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'`.
 The
 offline tests gate is `python3 -m unittest discover -s tests` and it needs no

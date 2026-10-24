@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-10-25
+
+### Added
+
+- **First release on PyPI** as `ntu-cool-cli`. `pipx install ntu-cool-cli` and
+  `uv tool install ntu-cool-cli` now work from the registry; the Git-URL install
+  remains available for the unreleased tip.
+- Package metadata for the index: `authors`, trove classifiers, and
+  `[project.urls]` (Homepage / Repository / Issues / Changelog).
+- `license` is now the SPDX expression `MIT` with `license-files = ["LICENSE"]`,
+  replacing the deprecated `license = { file = ... }` table.
+
+### Changed
+
+- The install section of both READMEs and the agent install prompt now lead with
+  the PyPI command; the Git and local-checkout routes are kept as alternatives.
+  (The previous text stated there was no PyPI release — that was true from
+  v1.0.0 through v1.3.0 and stopped being true with this release.)
+
+
 ## [1.3.0] - 2026-10-23
 
 ### Added
@@ -99,7 +119,6 @@ in the file is in the SAML login chain, which is authentication, not a write.
   Files tree, and submission status. `cool` is how NTU students already refer
   to the platform, and `cli` says what kind of thing it is.
   - Package name: `ntu-course-announcements` → `ntu-cool-cli`
-    (never published to PyPI — install from Git)
   - Console script: `ntu-cool` → `ntu-cool-cli`
   - The module stays `ntu_fetch`; `python3 scripts/ntu_fetch.py` still works.
   - GitHub redirects the old repository URL to the new one.
