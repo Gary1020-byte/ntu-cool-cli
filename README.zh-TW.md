@@ -1,9 +1,18 @@
 # ntu-cool-cli
 
+[![PyPI version](https://img.shields.io/pypi/v/ntu-cool-cli.svg)](https://pypi.org/project/ntu-cool-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ntu-cool-cli.svg)](https://pypi.org/project/ntu-cool-cli/)
+[![License: MIT](https://img.shields.io/pypi/l/ntu-cool-cli.svg)](https://github.com/Gary1020-byte/ntu-cool-cli/blob/main/LICENSE)
+
 一個 CLI，同時也是給 Agent 用的 skill —— 唯讀地讀取 NTU Cool 的課程公告、
 課程檔案、CA handout 與繳交狀態。
 
 可以直接在 shell 裡用，也可以裝成 skill 讓 agent 來驅動。
+
+```bash
+pipx install ntu-cool-cli     # 或：uv tool install ntu-cool-cli
+ntu-cool-cli --probe
+```
 
 > English version: [README.md](README.md)
 

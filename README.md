@@ -1,9 +1,18 @@
 # ntu-cool-cli
 
+[![PyPI version](https://img.shields.io/pypi/v/ntu-cool-cli.svg)](https://pypi.org/project/ntu-cool-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/ntu-cool-cli.svg)](https://pypi.org/project/ntu-cool-cli/)
+[![License: MIT](https://img.shields.io/pypi/l/ntu-cool-cli.svg)](https://github.com/Gary1020-byte/ntu-cool-cli/blob/main/LICENSE)
+
 A CLI and an agent skill for read-only access to NTU Cool: course
 announcements, course files, CA handouts, and submission status.
 
 Use it from a shell, or install it as a skill and let an agent drive it.
+
+```bash
+pipx install ntu-cool-cli     # or: uv tool install ntu-cool-cli
+ntu-cool-cli --probe
+```
 
 > 中文版: [README.zh-TW.md](README.zh-TW.md)
 
