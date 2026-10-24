@@ -61,19 +61,25 @@ keep in sync. Storage, dedupe, and delivery belong to whatever runs it.
 
 As a command — this gives you `ntu-cool-cli` on your PATH.
 
-**It is not on PyPI.** The package name `ntu-cool-cli` exists only in this
-repository's `pyproject.toml`; there is no PyPI release, so `pipx install
-ntu-cool-cli` and `uv tool install ntu-cool-cli` both fail with "no matching
-distribution". Install it from Git instead:
+```bash
+pipx install ntu-cool-cli     # or: uv tool install ntu-cool-cli
+ntu-cool-cli --probe
+```
+
+Or with plain pip, into your user site:
 
 ```bash
-# straight from Git — no clone needed
+python3 -m pip install --user ntu-cool-cli
+```
+
+**From Git instead** — if you want the unreleased tip, or to pin a commit:
+
+```bash
 uv tool install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'
-# or, with pipx:
 pipx install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'
 ```
 
-Or from a local checkout:
+**From a local checkout:**
 
 ```bash
 git clone https://github.com/Gary1020-byte/ntu-cool-cli.git
@@ -354,12 +360,11 @@ Show me this list, ask which ones I want, and wait for my answer.
 
 Then:
   - clone the repo
-  - install the `ntu-cool-cli` package. It is NOT on PyPI — install it
-    from the Git URL:
+  - install the `ntu-cool-cli` package:
+    `pipx install ntu-cool-cli` (or `uv tool install ntu-cool-cli`, or
+    `python3 -m pip install --user ntu-cool-cli`). It is on PyPI. If the
+    user wants the unreleased tip instead, install from the Git URL:
     `uv tool install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'`
-    (or `pipx install 'git+https://github.com/Gary1020-byte/ntu-cool-cli.git'`,
-    or `pipx install .` from inside the clone). `pipx install ntu-cool-cli`
-    fails — there is no PyPI release.
   - read SKILL.md, and keep only the sections matching the capabilities I chose
   - tell me how to supply credentials. Prefer the environment variables
     NTU_USER and NTU_PASS — nothing lands on disk and nothing stays in the
