@@ -318,8 +318,9 @@ Each file dict's `url` is a **signed, credential-bearing link**. Never log it, n
 it in a report, never commit it.
 
 **Filename shape:** use `display_name` (returned as `name`), not `filename` —
-`filename` is the storage name and reads `<TIMESTAMP>_<ID>__<ORIGINAL-NAME>.pdf`. Two files
-named identically inside one folder get a `_2`, `_3` suffix rather than overwriting.
+`filename` is the storage name and reads like `<TIMESTAMP>_<ID>__<ORIGINAL-NAME>`.
+Two files named identically inside one folder get a `_2`, `_3` suffix rather than
+overwriting.
 
 **Enter through the root, and paginate.** Three separate things go wrong if you do not:
 
@@ -440,7 +441,7 @@ python3 scripts/ntu_fetch.py --list-files --course a course --cred-file ~/.ntu-c
 Read the output by **chapter + file role**, not by name similarity:
 
 ```
-<COURSE>_ch<N>_習題.pdf        ← the scope (blank, posted before class)
+<COURSE>_ch<N>_習題.pdf       ← the scope (blank, posted before class)
 <COURSE>_ch<N>-2_習題詳解.pdf  ← the key for the same numbering
 <COURSE>_ch<N>_自主練習.pdf    ← 自主練習 is explicitly NOT graded
 ```
@@ -558,8 +559,8 @@ points, and it is invisible if you report only today's deadline.
 set is three assignment descriptions looks empty in Files.
 
 For a CS course (course <COURSE_ID>) the Files tree held exactly **one** file
-(`<PREFIX>_CA1.pdf`) — while `<PREFIX>_CA2.zip` and `<PREFIX>_CA3.zip` were both absent from it,
-from the announcement attachments (0), and from every module.
+(`<PREFIX>_CA1.pdf`) — while `<PREFIX>_CA2.zip` and `<PREFIX>_CA3.zip` were both
+absent from it, from the announcement attachments (0), and from every module.
 
 They are in the **assignment description HTML**:
 
@@ -838,7 +839,7 @@ concluding the download is broken.
 ### A solution file can be locked until a future date
 
 `GET /api/v1/courses/{id}/files/{file_id}` returns `unlock_at`, `lock_at`, `locked`,
-`hidden_for_user`. On a course, `<HOMEWORK-N>_solutions.pdf` existed with
+`hidden_for_user`. On a course, a solutions PDF existed with
 `unlock_at: 2026-10-23T01:00:00Z` (台北 10/23 09:00) — **the signed `url` came back empty
 and the download was not possible yet**. An empty `url` on a file you can see in the
 Files tree means "not released yet", not "download is broken". Check `unlock_at` before
@@ -886,7 +887,8 @@ this course" and is wrong. Read all three stores per course:
 `/discussion_topics` items include `attachments[]` with `display_name` and `id`.
 The a course 期中考 announcement (posted 5 days before the exam) carried
 `期中考教室座位表.pdf` — the seating chart, which is the only place the room
-split is published. Download it via the two-hop file fetch, not by guessing a path.
+split is published. (The generic Chinese name is fine; it is a real file's
+title, not a personal one.) Download it via the two-hop file fetch, not by guessing a path.
 
 ### A course code and a student ID differ by one letter — check which one you have
 
@@ -910,7 +912,7 @@ GET /api/v1/courses/{id}/assignments/{assignment_id}/submissions/self
 ```
 
 Note what that single field settles: the ID, **and** the format. The format document
-said `<ARCHIVE-WITH-ID>.zip` (with an `R`); the two archives the grader had actually
+said `CA1R<STUDENT-ID>.zip` (with an `R`); the two archives the grader had actually
 accepted were `CA1BXXXXXXXX.zip` and `CA2BXXXXXXXX.zip` (no `R`). The document and the
 grader disagree, and the grader wins.
 
@@ -962,8 +964,8 @@ Full recipe, coordinate code and reporting shape: `references/seating-chart-look
 
 ### PDFs may be password-protected — render and read the image
 
-`<SYLLABUS>.pdf` and `<CLASS-NOTES>.pdf` (both
-a course) open with `is_encrypted=True`. The lab-notes password (published in a
+A course's syllabus PDF and its class-notes PDF (both encrypted) open with
+`is_encrypted=True`. The lab-notes password (published in a
 course announcement, so it is course-specific and not a secret of the tool)
 authenticates the syllabus and class notes (`d.authenticate(PASSWORD)` → 6 =
 success) but **not** the seating chart.
@@ -1328,6 +1330,65 @@ user's. That is what an inbox is for.
 
 Do not run a Flask daemon. It is a second always-on service for a one-endpoint
 need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
+
+## This repo's own layout — where to change what
+
+The repo is **two layers bound together**, and most of its bulk is documentation,
+not code. Say this before anything else when someone asks 「架構是什麼」:
+
+| layer | file | what it is |
+|---|---|---|
+| the tool | `scripts/ntu_fetch.py` (~1090 lines) | the only executable code |
+| the manual | `SKILL.md` (large) | the agent-facing playbook: workflows + every trap this tool hit |
+| the depth | `references/*.md` | same material, one file per topic |
+| the packaging | `pyproject.toml` + `.github/workflows/` | `scripts/ntu_fetch.py` → PyPI `ntu-cool-cli`; CI + publish |
+
+**`SKILL.md` being long is not bloat.** Each section is a 「I assumed A, it was B,
+because C」 trap record. Do not summarise it as documentation noise and do not
+propose trimming it — the length IS the asset.
+
+**The runtime shape of `ntu_fetch.py` is five steps:**
+
+```
+_session()      → one requests.Session; the User-Agent is set HERE, once
+cool_login()    → NTU ADFS login → session cookies
+fetch_courses() → current-term roster (homepage parse, NOT /api/v1/courses)
+fetch_xxx()     → one API endpoint each; all parallel, none depend on each other
+render()        → JSON/HTML → markdown
+```
+
+**Adding a capability is two edits, not a refactor:** one `fetch_xxx()` function
+plus one argparse flag in `main()`. The `fetch_*` layer is deliberately flat so
+it stays that way — resist wrapping them in a base class or a registry.
+
+| to change | edit |
+|---|---|
+| add a flag | `main()`'s argparse block |
+| add a data source | a new `fetch_xxx()` next to its siblings |
+| fix login | `cool_login()` |
+| change how the agent uses the tool | `SKILL.md` |
+| ship a new version | `pyproject.toml`'s `version`, then the release chain in `references/release-and-packaging.md` |
+
+### The repo is the source; the installed skill is a copy — they drift silently
+
+`SKILL.md` lives in **two** places: this repo (the source, pushed to GitHub,
+published to PyPI) and `~/.hermes/skills/ntu-cool-cli/` (the copy Hermes
+actually loads). **Editing one does not touch the other**, so a fix applied to
+the repo is not in effect until the skill copy is refreshed, and vice versa.
+
+When the user edits one side, say which side they are on and whether the other
+one needs a copy back. Bump the `version:` field in the frontmatter when the
+two are re-synced, so a stale copy is visible in the frontmatter instead of
+silently serving old instructions.
+
+### Reading the repo from a laptop over SSH
+
+The repo lives on the server (`~/services/ntu-cool-announcements-skill/`). To
+edit it from a Windows laptop, use VS Code's Remote-SSH against the server and
+`File → Open Folder` with the absolute server path; the integrated terminal is
+the server's own shell, so `python3 scripts/ntu_fetch.py --probe` runs against
+the real tool. Recipe and the local-vs-remote traps: `ide-acp-integration` §
+Editing server-side files from a laptop IDE.
 
 ## Reference
 

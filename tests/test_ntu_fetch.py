@@ -408,15 +408,22 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
     #   4. the course TITLES and the room numbers, which are the identifying
     #      part: a roster of four real course names with their exam dates
     #      says who this account belongs to as clearly as a course id does
+    #   5. the real FILE NAMES -- a course's own worksheet, solution key and
+    #      optional-practice PDFs. These are the actual coursework files, so
+    #      a filename is more identifying than a course title: it names the
+    #      assignment the student sat. A filename rule is what was missing
+    #      when a reviewer pointed at three real homework filenames still
+    #      sitting in the published skill.
     #
-    # Rules 1-3 are hard identifiers and need no context. Rule 4 needs
+    # Rules 1-3 and 5 are hard identifiers and need no context. Rule 4 needs
     # context, because the same words appear in ordinary prose ("the Files
     # tree structure", "a maths course"), so a title only counts when it
     # sits near a course-context marker.
     #
-    # Nothing here lists a real course name, student id or password: a
-    # denylist of the leaked values would itself be the leak. Every rule is
-    # a shape, so it also catches values added after this file was written.
+    # Nothing here lists a real course name, student id, password or
+    # filename: a denylist of the leaked values would itself be the leak.
+    # Every rule is a shape, so it also catches values added after this
+    # file was written.
     STUDENT_ID_RE = re.compile(r"(?<![A-Za-z0-9])[BR]\d{8}(?![0-9])")
     COURSE_CODE_RE = re.compile(r"(?<!\d)[56]\d{2}\s?\d{5}(?!\d)")
     PASSWORD_RE = re.compile(r"authenticate\(\s*[\"'][^\"']+[\"']\s*\)")
@@ -430,6 +437,55 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
         r"|Electronics|Structures)\b"
         r"|\b[A-Z][a-z]+ [A-Z][a-z]+ Structures\b")
     ROOM_RE = re.compile(r"(?<![0-9])\d{2,3}\s?(?:教室|實驗室)")
+
+    # --- filenames ---
+    #
+    # A filename is the most identifying string in the whole tree: it names
+    # the exact worksheet, solution key or midterm paper the student sat.
+    # Redacting the course title while leaving its homework filenames in
+    # place leaves the account just as findable.
+    #
+    # So a filename counts when it carries a piece that identifies:
+    #   - a Chinese discipline noun (力學 / 數學 / 電路 / 結構 / 物理 / 化學)
+    #   - a course prefix (a two-to-four letter course tag, then CA / HW /
+    #     CH / note / mid / exam)
+    #   - an academic-term prefix (1151_..., <TERM>-mid...)
+    #   - a student id
+    #   - an English course name
+    #
+    # A generic filename does not count: a Chinese name that names no
+    # discipline, or a plain English noun, say nothing about whose they are.
+    # The rule must not be so broad that it rejects every .pdf in the tree --
+    # a guard that cries wolf is a guard that gets disabled.
+    FILENAME_RE = re.compile(
+        r"[^\s`|()<>\[\]{}\"'`,;。，、:：/\\]+?"
+        r"\.(?:pdf|zip|pptx?|docx?|xlsx?)")
+    FILENAME_CJK_RE = re.compile(r"力學|數學|電路|結構|物理|化學|電子|工力")
+    FILENAME_PREFIX_RE = re.compile(
+        r"^[A-Za-z]{2,4}_(?:CA|HW|CH|note|mid|exam)", re.IGNORECASE)
+    FILENAME_TERM_RE = re.compile(r"^\d{3,4}[-_]")
+    FILENAME_EN_RE = re.compile(
+        r"Mechanics|Circuits|Circuit_Design|Data_Structures|Electronics",
+        re.IGNORECASE)
+
+    def _filename_reason(self, token):
+        """Why this filename identifies someone, or None if it is generic."""
+        base = token.rsplit(".", 1)[0]
+        if "*" in base:
+            base = base.split("*")[0]
+        if not base:
+            return None
+        if self.FILENAME_CJK_RE.search(base):
+            return "a discipline noun"
+        if self.FILENAME_PREFIX_RE.match(base):
+            return "a course prefix"
+        if self.FILENAME_TERM_RE.match(base):
+            return "an academic-term prefix"
+        if self.STUDENT_ID_RE.search(base):
+            return "a student id"
+        if self.FILENAME_EN_RE.search(base):
+            return "an English course name"
+        return None
     # Words that mean "this line is about a course", not "this line is prose".
     CONTEXT_RE = re.compile(
         r"期中考|期末考|模擬考|小考|課程|課堂|助教|講義|作業|學期|科目"
@@ -516,6 +572,24 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
                     self.fail(
                         f"{label} {hit.group(0)!r} in {path}:{i + 1} "
                         f"near a course-context marker:\n{line.strip()[:160]}")
+
+    def test_no_identifying_filenames(self):
+        """A filename that names a course's actual coursework identifies the
+        student more directly than a course title does.
+
+        Generic filenames are allowed: 期中座位表.pdf, worksheet.pdf and
+        seating.pdf do not say whose they are."""
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            for i, line in enumerate(src.splitlines(), 1):
+                for match in self.FILENAME_RE.finditer(line):
+                    token = match.group(0)
+                    reason = self._filename_reason(token)
+                    if reason is None:
+                        continue
+                    self.fail(
+                        f"filename {token!r} in {path}:{i} carries {reason}:\n"
+                        f"{line.strip()[:160]}")
 
     def test_no_room_numbers_in_course_context(self):
         """A room number is only identifying in a course context; the same

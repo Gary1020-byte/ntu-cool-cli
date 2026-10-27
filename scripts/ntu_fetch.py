@@ -1002,7 +1002,7 @@ def main() -> int:
                             skipped += 1
                             continue
                         # display_name is the human filename; `filename` is the
-                        # storage name and looks like "<TIMESTAMP>_<ID>__<ORIGINAL-NAME>.pdf".
+                        # storage name and looks like "<TIMESTAMP>_<ID>__<ORIGINAL-NAME>".
                         raw_name = str(f.get("name") or f.get("filename") or f.get("id"))
                         safe = os.path.basename(raw_name).replace("/", "_")
                         safe = re.sub(r"[^\w.\-㐀-鿿]+", "_", safe).strip("_") or str(f["id"])

@@ -2,7 +2,8 @@
 
 The handout for a CA is usually **not** in the course Files tree. Measured
 2026-10-21 on a CS course (course <COURSE_ID>): the Files tree held exactly one
-file (`<PREFIX>_CA1.pdf`), while `<PREFIX>_CA2.zip` and `<PREFIX>_CA3.zip` were absent from it,
+file (`<PREFIX>_CA1.pdf`), while `<PREFIX>_CA2.zip` and `<PREFIX>_CA3.zip` were
+absent from it,
 from announcement attachments, and from every module — and from the local disk.
 All three were on Cool the whole time, inside the assignment descriptions.
 
