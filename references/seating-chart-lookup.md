@@ -9,7 +9,7 @@ answering.
 | fact | source |
 |---|---|
 | date + time window | the exam announcement (may say 「下周二14:20-16:20」 — a *relative* day) |
-| room number | the seating chart's per-page heading (「<ROOM> 教室座位表」 / 「<ROOM> 教室座位表」) |
+| room number | the seating chart's per-page heading (「<ROOM> 教室座位表」) |
 | his seat | the chart, keyed by student ID |
 | venue for a lab/practical exam | an *earlier* announcement (the lab location is not on the seating chart) |
 
