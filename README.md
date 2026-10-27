@@ -461,7 +461,7 @@ That is a network-access question, not a code one — see
 SKILL.md                              the rulebook: verification status, traps, workflow
 scripts/ntu_fetch.py                  the whole tool
 pyproject.toml                        makes `ntu-cool-cli` installable
-tests/test_ntu_fetch.py               52 offline tests, no network
+tests/test_ntu_fetch.py               85 offline tests, no network
 ACKNOWLEDGEMENTS.md                   attribution and licensing notes
 references/api-findings.md           what the platform actually returns
 references/ceiba-unreachable.md       reachability control test
@@ -470,6 +470,16 @@ references/testing-and-interpreters.md  the venv-vs-system-python trap
 
 `SKILL.md` is written for an AI agent reading it before acting. It is readable by
 humans too, but its shape is "what is verified, what is not, what will bite you".
+
+It stays short on purpose: the rules an agent needs on every call are in
+`SKILL.md`, and the material behind a specific question lives in `references/`.
+Three of those are organised by the question they answer:
+
+| reference | read it for |
+|---|---|
+| `reading-course-state.md` | 「我交了嗎」「有什麼要交」「期限是什麼」 |
+| `exam-scopes-and-course-material.md` | 「範圍是什麼」「那份檔案在哪」「我的位置是哪」 |
+| `homework-and-due-dates.md` | 「作業啥時交」「有沒有漏的」「我交了沒」 |
 
 ---
 
