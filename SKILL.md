@@ -397,8 +397,8 @@ python3 scripts/ntu_fetch.py --download-files --course <COURSE> \
 ```
 
 `--max-mb` skips oversized files. Write to a scratch or staging directory and let the user
-decide what to keep — per § Filing the result, downloading straight into a working
-collection of notes is not a unilateral call.
+decide what to keep — downloading straight into a working collection of notes
+is not a unilateral call.
 
 **Check what is already local before pulling anything.** Your downloads folder and your
 existing notes often already hold the same lecture notes and homework sets that
