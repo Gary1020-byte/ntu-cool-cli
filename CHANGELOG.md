@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.3] - 2026-10-27
+
+### Changed
+
+- **The published skill no longer carries one account's course roster.** The
+  traps were documented with real course names, exam dates, a six-digit
+  handout course code, a lab-notes password and a room number. Each is now
+  written as the shape it has — `<SIX-DIGIT-CODE>`, `PASSWORD`, `<ROOM>`,
+  course A/B/C/D — so the lesson survives and the account does not.
+- **The leak guard now covers what actually leaked.** It knew a five-digit
+  course id and an `ESOE####` code; it did not know a student id, a
+  six-digit course code written with a space in it, a literal password, a
+  course title, or a room number. Five new rules, each a shape rather than
+  a denylist of the leaked values. The course-title and room-number rules
+  need a course-context window, because the same words appear in ordinary
+  prose.
+  The guard was verified by putting the previous `SKILL.md` and
+  `ntu_fetch.py` back into the tracked set: four rules fired at once, and
+  each was then reverted. A guard that has only ever reported clean is
+  untested.
+- Ported four sections from the local copy into the published skill, so it
+  carries what the last few live sessions measured: the course calendar
+  page as a source of exams, the two shapes of seating chart, the answer
+  shape for 「X 作業啥時交」, and programmatic access to the same data with
+  the helper signatures that bite if assumed.
+- `pyproject.toml` now sets `maintainers` alongside `authors`. Older
+  setuptools splits the author table into `author` / `author_email`, which
+  left the PyPI index page showing an email with no name next to it.
+- `publish.yml` uses `actions/checkout@v7` and `actions/setup-python@v6`,
+  matching `ci.yml`. The older pair targeted a deprecated Node.js runtime.
+- CI now tests Python 3.13, which `pyproject.toml` already claimed support
+  for but never tested.
+
+### Added
+
+- `references/seating-chart-lookup.md` — reading an exam seating chart:
+  room heading per page, ID → row coordinates, the seat-number floor map +
+  time-slot table shape, and the two-exams-two-charts trap.
+- `references/release-and-packaging.md` — how the published package and the
+  working tree drift, and what to check before saying 「已上架」.
+
+### Tests
+
+84 now, up from 79.
+
 ## [1.3.2] - 2026-10-25
 
 ### Changed
@@ -191,7 +236,10 @@ read-only fetcher for NTU Cool course announcements and course files.
 - A false claim in `ACKNOWLEDGEMENTS.md` about the project it was derived from.
 - The author's own course roster was removed from every tracked file.
 
-[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.1...v1.3.2
+[1.3.1]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/Gary1020-byte/ntu-cool-cli/compare/v1.0.0...v1.1.0
