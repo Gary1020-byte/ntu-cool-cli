@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.3.4] - 2026-10-27
 
+### Note on the published versions
+
+**1.3.1, 1.3.2 and 1.3.3 on PyPI still carry two real filenames** — a course
+handout's archive name in a test fixture, and a storage-name example in a
+comment. They are inside the package's `tests/` and `scripts/`, not in the
+documentation, and the filenames are now genericised in 1.3.4.
+
+PyPI does not allow a published file to be re-uploaded under the same version
+and does not allow a version to be deleted, so those three releases stay as
+they are. The repository's own history was rewritten, so every commit in it is
+free of the identifiers that were there before.
+
 ### Changed
 
 - **The repo is now only the tool.** Two things that belong to a personal
