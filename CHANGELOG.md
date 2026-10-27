@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.4] - 2026-10-27
+
+### Changed
+
+- **The repo is now only the tool.** Two things that belong to a personal
+  filing process were removed:
+  - the rules for filing a capture into a notes system, turning a deadline
+    into an inbox task, and running the drift checker over copied facts —
+    that is a note-taking system's job, not a fetch tool's
+  - one course's C++ handout build fix, which was homework debugging rather
+    than retrieval; the reference now says where a compile error in a
+    handout belongs instead of carrying the answer
+- The worksheet-pairing lesson is now stated as a rule rather than as one
+  course's filenames: *when an announcement says the quiz is the homework,
+  fetch the worksheet and the solution key with the same numbering, and
+  treat the optional-practice file as not graded.*
+- `SKILL.md` gained a section stating the tool's boundary: it reads NTU Cool
+  and reports what the course said. It does not file notes, create tasks, or
+  decide what a deadline means for you.
+
 ## [1.3.3] - 2026-10-27
 
 ### Changed
