@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.5] - 2026-10-27
+
+### Changed
+
+- **SKILL.md is shorter: 1357 lines → 786.** The problem was not the total but
+  the shape — one section held 25 sub-sections under a single heading with no
+  grouping, so a reader had no way in. The rules an agent needs on every call
+  stay in `SKILL.md`; the material behind a specific question moved to
+  `references/`, split by the question it answers:
+  - `reading-course-state.md` — submissions, course pages, the calendar page,
+    and how to read a deadline
+  - `exam-scopes-and-course-material.md` — the Files tree's lock states,
+    announcement attachments, seating charts, encrypted PDFs, and telling one
+    course's file from another's
+  - `homework-and-due-dates.md` — the homework roster, what a syllabus plans
+    but never assigns, paper hand-in versus upload, and the shape of a complete
+    answer
+- The `Pitfalls` list is now grouped (reading the course / walking the Files
+  tree / downloading / deadlines and submissions / using the tool) instead of one
+  flat run of 18 items.
+- Both READMEs' file listings now name the three question-shaped references and
+  carry the real test count.
+
+Nothing was cut. Every moved paragraph is in a reference; the four
+references that already existed are unchanged.
+
 ## [1.3.4] - 2026-10-27
 
 ### Note on the published versions

@@ -431,7 +431,7 @@ d[0].get_pixmap(dpi=160).save("page1.png")   # 然後讀這張圖
 SKILL.md                              規則書：驗證狀態、坑、工作流程
 scripts/ntu_fetch.py                  整個工具
 pyproject.toml                        讓 `ntu-cool-cli` 變成可安裝指令
-tests/test_ntu_fetch.py               52 個離線測試，不連網路
+tests/test_ntu_fetch.py               85 個離線測試，不連網路
 ACKNOWLEDGEMENTS.md                   哪些東西來自上游專案
 references/api-findings.md            平台實際回傳什麼
 references/ceiba-unreachable.md       可達性對照實驗
@@ -440,6 +440,15 @@ references/testing-and-interpreters.md  venv 和系統 Python 的坑
 
 `SKILL.md` 是寫給 **AI agent 在行動前閱讀**用的。人類也讀得懂，
 但它的組織方式是「什麼已驗證、什麼沒有、什麼會咬你」。
+
+它刻意保持短:agent 每次都要用的規則留在 `SKILL.md`,
+特定問題的細節放在 `references/`。其中三個是**依問題**組織的:
+
+| reference | 什麼時候讀 |
+|---|---|
+| `reading-course-state.md` | 「我交了嗎」「有什麼要交」「期限是什麼」 |
+| `exam-scopes-and-course-material.md` | 「範圍是什麼」「那份檔案在哪」「我的位置是哪」 |
+| `homework-and-due-dates.md` | 「作業啥時交」「有沒有漏的」「我交了沒」 |
 
 ---
 

@@ -31,7 +31,7 @@ Not for: NTU account setup, or general web fetching.
 |---|---|
 | what a course announced | `discussion_topics` (announcements + their attachments) |
 | course files — handouts, worksheets, solutions, syllabus | the Files tree (`folders`) |
-| a CA handout, when the Files tree is empty | the **assignment description** (`assignments`) — see § CA handouts |
+| a CA handout, when the Files tree is empty | the **assignment description** (`assignments`) — see § Computer Assignment handouts |
 | lectures grouped by week | **modules** (`modules` → `modules/{id}/items`) |
 | whether a submission was accepted | `/submissions/self` |
 
@@ -578,15 +578,36 @@ something he has not done — on a course, the answer to 「今天有作業嗎�
 「有,而且上一份也沒交,補交視窗已經關了」. The second fact is the one that costs him
 points, and it is invisible if you report only today's deadline.
 
-## Computer Assignment handouts live in the assignment description, not the Files tree
+## The four stores, and which one holds what
+
+| store | endpoint | holds |
+|---|---|---|
+| assignment description | `/assignments` → `data-api-endpoint` | CA handouts, homework sets |
+| modules | `/modules` → `/modules/{id}/items` | lectures, week-grouped |
+| Files tree | `/folders` → `files_url` | course files (can be nearly empty) |
+| announcement attachments | `/discussion_topics` → `attachments[]` | files bound to one announcement |
+
+**Which store you read decides whether you find the material.** A course whose
+entire handout set is three assignment descriptions looks empty in Files — the
+Files tree held one file while the other two were absent from it, from the
+announcement attachments, and from every module. Read them in the order above;
+a sweep of one store is not a sweep of the course.
+
+Each store has its own trap, and the traps are recorded in three references:
+
+| reference | read it when |
+|---|---|
+| `references/reading-course-state.md` | 「我交了嗎」「有什麼要交」「期限是什麼」 — submissions, course pages, the calendar page, and how to read a deadline |
+| `references/exam-scopes-and-course-material.md` | 「範圍是什麼」「那份檔案在哪」「我的位置是哪」 — the Files tree's lock states, attachments, seating charts, encrypted PDFs, and telling one course's file from another's |
+| `references/homework-and-due-dates.md` | 「作業啥時交」「有沒有漏的」「我交了沒」 — the homework roster, what a syllabus plans but never assigns, paper hand-in versus upload, and the shape of a complete answer |
+
+### Computer Assignment handouts live in the assignment description
 
 **CLI flags: `--list-handouts` (the links) and `--download-handout` (the bytes).**
 
 **The Files tree is not where CA material is.** A course whose entire handout
-set is three assignment descriptions looks empty in Files.
-
-For a CS course (course <COURSE_ID>) the Files tree held exactly **one** file
-(`<PREFIX>_CA1.pdf`) — while `<PREFIX>_CA2.zip` and `<PREFIX>_CA3.zip` were both
+set is three assignment descriptions looks empty in Files. Measured on one
+course: the Files tree held exactly **one** file, while the other two were
 absent from it, from the announcement attachments (0), and from every module.
 
 They are in the **assignment description HTML**:
@@ -623,620 +644,6 @@ failure if you are not expecting it:
 Modules are the other store, and they resolve the same two-hop way:
 `GET /modules/{id}/items` → a `File` item's `url` is an API link → JSON →
 signed `url` → bytes.
-
-### The full set of stores, in the order worth checking
-
-| store | endpoint | holds |
-|---|---|---|
-| assignment description | `/assignments` → `data-api-endpoint` | CA handouts, homework sets |
-| modules | `/modules` → `/modules/{id}/items` | lectures, week-grouped |
-| Files tree | `/folders` → `files_url` | course files (can be nearly empty) |
-| announcement attachments | `/discussion_topics` → `attachments[]` | files bound to one announcement |
-
-### Your own submission status lives at `/assignments/{id}/submissions/self`
-
-**CLI flag: `--list-submissions`.** The endpoint below is what it calls, and
-what each field means.
-
-**This is the endpoint that answers 「我有沒有交」 and 「遲交還能不能補」.**
-
-```
-GET /api/v1/courses/{id}/assignments/{id}/submissions/self   → 200, your submission
-GET /api/v1/courses/{id}/assignments/{id}/submissions?self=1 → 403 (do not use)
-```
-
-Measured 2026-10-22 on a course (<COURSE_ID>): the `?self=1` list form returned **403 Forbidden**
-on every assignment, while `/submissions/self` returned 200 for all of them. Same session,
-same credentials — only the path differs.
-
-Fields that matter:
-
-| field | meaning | how to read it |
-|---|---|---|
-| `workflow_state` | `unsubmitted` / `submitted` / `graded` | `unsubmitted` + `submitted_at: null` = never handed in |
-| `submitted_at` | UTC ISO | convert to Taipei before comparing to `due_at` |
-| `score` | grade, `null` if ungraded | `points_possible` is per-assignment (1.75% on a course) |
-| `seconds_late` | seconds past due | **non-zero on an assignment that was never submitted** — it is "how long late it *would* be", not proof of a late submission |
-| `late_policy_status` | `late` / `missing` / `null` | `missing` = never turned in |
-
-**`due_at` and `lock_at` are both UTC, and `lock_at` is the real deadline.**
-On a course: `due_at: 2026-10-22T15:59:59Z` (= 台北 10/22 23:59) and
-`lock_at: 2026-10-23T00:00:00Z` (= 台北 10/23 08:00). The 8-hour gap is the buffer the
-course page promises. **A `lock_at` in the past means the upload window is closed** — the
-`seconds_late` counter keeps running forever on an unsubmitted assignment, so it is
-*not* evidence you can still turn it in.
-
-Pair this with the course's 「作業遲交政策」 page rather than assuming a 24-hour grace.
-
-### Course pages are addressed by slug, and the slug is on the module item
-
-**CLI flags: `--list-pages` (the slugs) and `--show-page <slug>` (the body).**
-
-The 課程大綱 / 課程行事曆 / 遲交政策 / 繳交方式 / 撰寫原則 live in `/pages`, and the
-module item carries the slug in `page_url`:
-
-```
-module item → {"type": "Page", "page_url": "ke-cheng-da-gang",
-               "url": ".../api/v1/courses/<COURSE_ID>/pages/ke-cheng-da-gang"}
-GET /api/v1/courses/{id}/pages/ke-cheng-da-gang   → 200, body = HTML
-```
-
-`content_id` is **absent** on Page items (it is present on File items), so
-`/pages/{content_id}` → `/pages/None` → 404. Read `page_url` or the item's own `url`.
-
-These pages carry the rules no other endpoint has: the exam date and scope, the
-13-assignment schedule, the grading breakdown, the late policy, the submission-format
-requirement (single PDF), and the report-writing rubric. **A course can have zero
-announcements and still be fully documented here** — the 4-announcement sweep for
-a course hid all of it.
-
-### The course calendar page carries exams that `/assignments` does not list
-
-A course's 課程行事曆 page (`/pages/ke-cheng-xing-shi-li`) is a week-by-week
-HTML table whose 主題 column names the exam and whose 課本範圍 column gives
-the chapters. **It is a distinct source from `/assignments`, and it often holds
-exams the assignment list never mentions.**
-
-Measured: one course's `/assignments` listed only 期中考一, while its calendar
-page carried 期中考一, 期中考二 and 期末考 — with the scope of each
-(`midterm exam 1 / Chapters 1-3`, `midterm exam 2 / Chapters 4-6`,
-`final exam / Chapters 1-9, 13`). Two of the three exams were invisible to an
-assignment sweep.
-
-Parse it as a table, not as prose — the page body is one `<table>` of
-`<tr>/<td>`:
-
-```python
-import re, html
-body = json.loads(r.text)["body"]
-for tr in re.findall(r"<tr.*?</tr>", body, re.S):
-    cells = [re.sub(r"\s+", " ", html.unescape(re.sub("<[^>]+>", " ", c))).strip()
-             for c in re.findall(r"<t[dh].*?</t[dh]>", tr, re.S)]
-    if any(cells):
-        print(" | ".join(cells))
-```
-
-The 截止 column of that table is the assignment tag of the week
-(`HW#6`), **not** a due date — the due date still comes from `/assignments`.
-
-### A course can have NO modules, NO pages, NO quizzes, and NO calendar
-
-**CLI flag: `--list-modules`.**
-
-**`/pages` reached only through `/modules` is a chain of two links, and either link can
-be dead.** A course that uses neither of them has no course-outline page, no exam-date
-page, and no quiz list — and every endpoint returns a shape that looks like an empty
-result rather than an error.
-
-Measured on a course (<COURSE_ID>): `/modules` → `[]`, `/pages` → **404 「該頁面在此課程已被停用」**,
-`/quizzes` → **404**, `/calendar` → **404**, `/discussion_topics` → `[]`.
-Only `/assignments` and the Files tree carried anything.
-
-**A `[]` from `/modules` is not 「the course has no material」** — it means this course
-publishes nothing through modules. The material can be entirely in the Files tree and in
-the assignment descriptions. Read the empty result as a fact about the *store*, not about
-the course.
-
-**So the per-course endpoint map is not fixed — probe it.** One cheap loop over the
-endpoints settles the shape of the course you are actually working with, and tells you
-which stores to bother with:
-
-```python
-for path in ["/assignments?per_page=100", "/modules?per_page=100",
-             "/pages?per_page=100", "/quizzes?per_page=100",
-             "/calendar", "/discussion_topics?per_page=100",
-             "/assignment_groups?per_page=100"]:
-    r = s.get(f"{API}/courses/{cid}{path}", timeout=30)
-    # 200 + non-empty list = this store has content
-    # 200 + []            = this store is unused by this course
-    # 404                = this store is disabled for this course
-```
-
-**Where the schedule comes from when the course pages are dead:** the **syllabus PDF**,
-which courses publish in the Files tree and which is usually a single page carrying the
-whole semester — week number, date, course outline, the assignment tag, the exam, and the
-grading breakdown. That PDF is the fallback for everything `/pages` would have given you.
-Read it with `pymupdf` and treat its week table as the schedule:
-
-```
-W6  10/16  Logic Minimization and Optimization (HW 2)
-W7  10/23  Binary Representation and Arithmetic Circuits (Quiz 1)
-W8  10/30  Midterm
-```
-
-**When the syllabus gives a week but not a clock time, say the time is unknown.** A quiz
-listed as 「Quiz 1」 on a week with no published time is a genuine gap — report it as one
-and route the question to the TA, rather than inferring a time from the class slot.
-
-### A stored deadline goes stale — re-read `/assignments` before planning around any date
-
-Canvas records **when the professor edited the assignment** in `updated_at`. A task file
-or a note written days earlier is a snapshot of the deadline *as it was then*, and a
-professor can move a due date without posting any announcement. The `updated_at` field is
-how you detect that:
-
-```
-GET /api/v1/courses/{id}/assignments
-  → {"id":424916, "name":"HW2",
-     "due_at":"2026-10-30T09:30:00Z",      ← live value
-     "updated_at":"2026-10-22T14:03:37Z",  ← professor edited here
-     "created_at":"2026-10-17T05:35:21Z"}
-```
-
-**Rule: the live `/assignments` `due_at` wins over any date you wrote down earlier.**
-When it disagrees with a task file, say so out loud, correct the file, and name
-which one was wrong. A task file carrying a due date nobody re-checks is exactly the kind
-of stale record that costs a whole assignment.
-
-**Compare `updated_at` against the date you recorded.** If the assignment was edited after
-your note was written, treat the deadline as suspect even when the value happens to match.
-
-**A deadline in a note file is a claim, not a fact.** Before building a plan, a
-reminder, or a countdown around any course deadline, re-read the source that owns it.
-
-### A syllabus's week column is not a due date
-
-Syllabus schedules pair a **date** with a **course outline**, and the assignment tag rides
-along in the same row:
-
-```
-6   10/16   Logic Minimization and Optimization (HW 2)
-```
-
-This means **HW2 belongs to the 10/16 week** — it covers the unit taught that week. It does
-**not** mean HW2 was due on 10/16. The due date comes from `/assignments` and nowhere
-else. Reading the week column as the deadline is a one-day error that becomes a missed-week
-error when the two happen to be a week apart — and the assignment is then still open when
-you thought it was closed.
-
-### A deadline value can be right while its weekday label is wrong
-
-`due_at` is read from the API and is a fact. The **weekday you write beside it** is not —
-it is a calendar fact you inferred, and inference is where this goes wrong.
-
-The recurring mechanism: knowing today's weekday, then reasoning 「yesterday was Thursday,
-so the date one week out is Thursday too」. That holds only when the gap is exactly 7 days.
-A due date pushed a week out from a *different* day is not, and the error propagates
-because nothing in the workflow ever recomputes it — the date was verified, so the label
-beside it was trusted.
-
-**Compute every weekday you write, with `date -d`, at the moment you write it:**
-
-```bash
-for d in 2026-10-16 2026-10-22 2026-10-23 2026-10-29 2026-10-30; do
-  echo -n "$d "; date -d "$d" '+%A (週%u)'
-done
-```
-
-**A weekday label is worse than no label.** It carries the authority of the verified date
-sitting next to it, and it gets copied into every task file, plan page and summary that
-touches the deadline — so one inference error becomes six artifacts that all read as
-checked.
-
-**Cross-check the whole schedule instead of trusting one date.** When a syllabus publishes a
-week-by-week table, run its dates through `date -d` in a single loop. A course whose
-fifteen class dates are *all* the same weekday tells you something no single row does:
-which day homework is handed out, whether a due date lands in class, and — when a deadline
-is 「上課前交給助教」 — that the hand-in is the same day as the due date rather than the day
-before.
-
-```bash
-# syllabus week table → every date labelled, one pass
-printf '%s\n' 9/11 9/18 10/02 10/16 10/23 10/30 | \
-  while read -r m d; do echo -n "2026-$m-$d "; date -d "2026-$m-$d" '+%a'; done
-```
-
-### An empty `url` on a file means two different things
-
-`GET /api/v1/courses/{id}/files/{id}` returns `unlock_at`, `lock_at`, `locked`,
-`hidden_for_user`. A file can be **visible in the Files tree** and still be undownloadable.
-Two distinct causes, and they need different answers:
-
-| | meaning | how to tell |
-|---|---|---|
-| `locked: true`, `unlock_at` in the future | **not released yet** — the course will publish it later | `unlock_at` is set and in the future |
-| `hidden_for_user: true` | **not published to students** — the professor hid it from the Files listing | `hidden_for_user` is true |
-
-A homework PDF attached to an assignment description can carry `hidden_for_user: true`
-while the assignment's own `description` links to it and the bytes download fine — the
-flag refers to the course Files listing, not to the assignment's attachment. **Try the
-download before reporting the file as unavailable**, and check `unlock_at` before
-concluding the download is broken.
-
-### A solution file can be locked until a future date
-
-`GET /api/v1/courses/{id}/files/{file_id}` returns `unlock_at`, `lock_at`, `locked`,
-`hidden_for_user`. On a course, a solutions PDF existed with
-`unlock_at: 2026-10-23T01:00:00Z` (台北 10/23 09:00) — **the signed `url` came back empty
-and the download was not possible yet**. An empty `url` on a file you can see in the
-Files tree means "not released yet", not "download is broken". Check `unlock_at` before
-concluding the file is missing.
-
-**A locked course key is not a reason to wait.** The course's own solution PDF unlocks
-at a future hour, but the **textbook's published solutions manual** is available now and
-carries the same answers — for concept questions it carries the *prose* answer, not just
-a number. When a homework set needs solving, go get the manual rather than polling for
-`unlock_at`. Recipe: `course-assignment-submission/references/textbook-solutions-manual-and-verification.md`.
-
-### A locked file's `url` field is empty — fetch the metadata, not the tree entry
-
-The Files-tree entry and the file-metadata response are different shapes. A tree entry
-may carry a `url` that is present-but-unusable, while the metadata response
-(`GET /api/v1/courses/{id}/files/{id}`) carries `display_name`, `size`, `unlock_at`,
-`lock_at`, `locked`, `hidden_for_user` — the fields you need to decide *why* a download
-is not possible. Fetch metadata for every file you intend to download rather than
-relying on what the tree listing happened to include.
-
-### `discussion_topics` needs `only_announcements=true` or it returns `[]`
-
-```
-GET /api/v1/courses/{id}/discussion_topics                      → 200, body = []   ← WRONG
-GET /api/v1/courses/{id}/discussion_topics?only_announcements=true&per_page=1000
-                                                                  → 200, real list
-```
-
-Measured 2026-10-23 across all seven current courses: the bare path returned an
-**empty array with HTTP 200** for every course, while the same URL with
-`only_announcements=true` returned 4–6 announcements each. An empty list here is
-**not** "no announcements" — it is the missing parameter. `fetch_announcements()`
-in `ntu_fetch.py` already passes the right params; a hand-rolled `s.get()` that
-omits them silently produces zero results and looks like a course with no news.
-
-**This matters for exam discovery.** a course (<COURSE_ID>) has **zero assignments**
-in Cool — its 期中考 exists only in an announcement + a seating-chart attachment +
-the syllabus PDF. A sweep that reads `/assignments` alone reports "no exams for
-this course" and is wrong. Read all three stores per course:
-`/assignments` (dated work), `/discussion_topics?only_announcements=true`
-(prose + attachments), and the course pages/syllabus (scope + rules).
-
-### Announcement attachments carry the exam logistics
-
-`/discussion_topics` items include `attachments[]` with `display_name` and `id`.
-The a course 期中考 announcement (posted 5 days before the exam) carried
-`期中考教室座位表.pdf` — the seating chart, which is the only place the room
-split is published. (The generic Chinese name is fine; it is a real file's
-title, not a personal one.) Download it via the two-hop file fetch, not by guessing a path.
-
-### A course code and a student ID differ by one letter — check which one you have
-
-NTU ESOE course codes are six digits (`<SIX-DIGIT-CODE>` / ESOE `<CODE>`) and
-appear in the handout's own header line, so they are trivially mistaken for the
-student ID (`B` + eight digits). The two are used in different places and neither is
-guessable:
-
-| the value | where it belongs | where to get it |
-|---|---|---|
-| course code `<SIX-DIGIT-CODE>` | the handout's title line | the PDF header |
-| student ID `BXXXXXXXX` | the `@ID` field, the archive filename, the seating chart | the course's **already-accepted earlier submissions** |
-
-**Read the student ID off the accepted earlier submissions** — the submission
-attachment's `display_name` is the archive the grader already took and graded, so it
-carries the ID and the exact filename format the grader expects, in one field:
-
-```
-GET /api/v1/courses/{id}/assignments/{assignment_id}/submissions/self
-  → attachments[].display_name = "CA1BXXXXXXXX.zip"
-```
-
-Note what that single field settles: the ID, **and** the format. The format document
-said `CA1R<STUDENT-ID>.zip` (with an `R`); the two archives the grader had actually
-accepted were `CA1BXXXXXXXX.zip` and `CA2BXXXXXXXX.zip` (no `R`). The document and the
-grader disagree, and the grader wins.
-
-### A seating chart is a lookup, not a diff — and "not found" is ambiguous
-
-Seating charts are keyed by student ID, so a lookup with the right ID is a lookup with
-the wrong key is a false 「he isn't registered」. Search the PDF's **text layer** for
-the ID and read its coordinates to get the row and the room:
-
-```python
-import pymupdf
-d = pymupdf.open("seating.pdf")
-for i in range(d.page_count):
-    words = d[i].get_text("words")
-    for w in words:
-        if w[4] == STUDENT_ID:
-            x0, y0, x1, y1 = w[:4]
-            row = [v for v in words if abs((v[1]+v[3])/2 - (y0+y1)/2) < 8]
-            row.sort(key=lambda v: v[0])
-            print("room heading:", d[i].get_text().split("\n")[0].strip())
-            print("row:", " | ".join(v[4] for v in row))
-```
-
-The room is the heading on that page (「<ROOM> 教室座位表」), and the
-row's horizontal order gives the seat.
-
-**A miss is ambiguous between "wrong ID" and "not on the chart"** — so before
-reporting that a student is not on a chart, confirm you searched for the ID and not
-for a course code. A chart of ~66 IDs with no hit for a value that is visibly a
-course code is a finding about the *value*, not about the student.
-
-### Two seating-chart shapes — read the chart type before reading the chart
-
-A seating chart comes in two shapes and they need different parsers. **Type A**
-lists student IDs placed in seat positions (the room is the page heading; find the
-ID, reconstruct its row from word coordinates). **Type B** is a floor map of seat
-numbers plus a separate 梯次表 whose rows are seat numbers and whose cells are
-student IDs — so ID → seat number → time slot comes from the table, and seat
-number → physical place comes from the map, which needs a render and a vision
-read.
-
-**One course can publish one chart per exam** (a paper-midterm chart and a lab
-chart days later). They are different documents with different keying; answering
-one exam's seat from the other chart is wrong. And **the chart is not the venue** —
-a lab exam's room came from an earlier announcement, not from the chart, so name
-that announcement as the venue's source.
-
-Full recipe, coordinate code and reporting shape: `references/seating-chart-lookup.md`.
-
-### PDFs may be password-protected — render and read the image
-
-A course's syllabus PDF and its class-notes PDF (both encrypted) open with
-`is_encrypted=True`. The lab-notes password (published in a
-course announcement, so it is course-specific and not a secret of the tool)
-authenticates the syllabus and class notes (`d.authenticate(PASSWORD)` → 6 =
-success) but **not** the seating chart.
-
-Unlock first, then measure each page — a partially-extractable document is the case that
-misleads:
-
-```
-doc = pymupdf.open(path); doc.authenticate(PASSWORD)   # from the course's announcement
-for i in range(doc.page_count):
-    print(i + 1, len(doc[i].get_text().strip()))
-doc[i].get_pixmap(dpi=140).save(f"p{i+1}.png")   # then read the image
-```
-
-**The syllabus's grading table and schedule are on different pages, and they read
-differently.** The syllabus is 2 pages: page 1 carries the class times, instructor, TAs,
-the grading split with each exam's chapter scope, and the chapter/lab outlines; page 2
-carries the week-by-week date table. Page 1's text layer extracts (~1,000 characters) but
-its grading block reads better from the rendered image; page 2's date table extracts
-cleanly as text. The seating chart, by contrast, has no usable text layer at all — that one
-does need the render path.
-
-So the rule is not 「render everything」 but **render the page whose content you actually
-need and whose text layer did not give it to you** — a page that extracts is not
-unreadable, and a page that extracts partially may still be hiding a figure.
-
-That split matters because **the grading table's scope and the date table resolve an
-ambiguity the grading table alone cannot.** A scope printed as `Chap. 1 ~ 4 or 5` is settled
-by the schedule: the branch naming a chapter taught after the exam date cannot fire. Read
-BOTH pages — the scope line without the schedule beside it leaves the branch unresolved, and
-the schedule without the scope line says nothing about what is examined.
-
-### An attachment filename is not an identity — check the first page
-
-The attachment cache holds several courses' files side by side, and the names collide with
-the courses' real chapter structure: `<CH-N>_note (1).pdf` through `<CH-N>_note.pdf` were all
-**a course** notes (a textbook's chapter decks plus the instructor's handwritten pages),
-`Chapter1_v1.pdf`/`Chapter2_v1.pdf` were **a course**, and three `<TERM>-mid*.pdf` files
-were byte-identical copies of **a course一**'s midterm paper — none of them the circuits
-notes their filenames imply.
-
-Identify by opening page 1, never by name. Two cheap checks, because the failure is silent
-— the file opens fine, it is just the wrong subject:
-
-```bash
-md5sum <candidate files>          # byte-identical copies collapse to one hash
-```
-
-```python
-import pymupdf
-d = pymupdf.open(f); print(d.page_count, d[0].get_text()[:120].replace("\n", " | "))
-```
-
-The subject line on page 1 is the only reliable identity, and for handwritten pages with
-no text layer, render page 1 and read it. Report the identity table to the student — the
-mapping of 「which file is actually this course's」 is itself the deliverable, because
-every later session that opens the cache will otherwise open the wrong file.
-
-### `/assignments` is the homework roster — the syllabus is not
-
-**CLI flag: `--list-assignments`.**
-
-The syllabus is a **plan**; `/assignments` is the **record**. A course syllabus
-routinely names homework that does not exist yet: 「助教作業講解(Exam I+hw5-6)」
-on a schedule line is the instructor's intention for a later date, not a
-published assignment. Treating it as a to-do list produces a phantom gap
-(「HW5 是缺的,怎麼辦」) for a file that has not been assigned.
-
-`GET /api/v1/courses/{id}/assignments` returns the authoritative list with
-`due_at` (UTC), `submission_types`, and `published`. For one course it held
-four rows — HW1–HW4 — while the syllabus referenced HW5 and HW6. The modules
-endpoint confirmed it: module `作業解答` held exactly HW1–HW4 solution PDFs,
-one per assignment.
-
-**Report the assignment list as the count it actually is.** 「Cool 上只有 HW1–HW4,
-沒有 HW5」 is a finding; 「HW5 沒有 PDF 所以缺了」 is a wrong claim about a
-homework that was never assigned.
-
-### A homework set with no course coverage is a scope gap, not a task
-
-When `/assignments` stops at HW4 and the textbook/chapter runs further, the
-tail sections of the exam's chapter range have **no homework coverage**. That
-is worth stating explicitly to the student: those sections must be studied
-from the slides alone, which changes how they spend the last day. Do not
-silently drop them (the syllabus says the chapter) and do not invent an
-assignment for them.
-
-**Do not conclude a file is missing from the Files tree.** Enumerate assignments
-and modules before reporting anything as absent — for CA3, all three of Files
-tree / announcement attachments / local disk came up empty, and the handout was
-sitting in the assignment description the whole time.
-
-### Assignment metadata worth capturing
-
-`/assignments` also gives the grading terms, which the announcements omit:
-
-- `due_at` is UTC (`2026-10-23T13:00:00Z` = 21:00 Taipei) — do not read it
-  as a local time
-- `submission_types` distinguishes `online_upload` (CA) from `on_paper` (HW)
-- `desc` carries the handout link; `attachment` is **null** on these
-  assignments, so `assignment["attachment"]` is not the way to find the file
-- `lock_at` is where the upload window actually closes (see § submissions/self)
-
-### 「X 作業啥時交」— the answer shape
-
-This is the standing question, and it has a fixed answer shape. Give a one-line
-headline first (date + clock + venue), then the sources that back it, then the
-student's own status, then the policy, then adjacent facts you already have:
-
-```
-HW2：<YYYY/MM/DD>（週<W>）<HH:MM> 前，<ROOM>。
-- 公告「HW2繳交」：延至 <YYYY/MM/DD> 週<W>繳交，<HH:MM>-<HH:MM> 到 <ROOM> 交，並取回 HW1。
-- /assignments：due_at = ...Z = 台北 <HH:MM>，submission_types = on_paper。
-- 你的 HW2 目前 unsubmitted — 還沒交。
-- 作業規定：當周有作業要交，請上課前交給助教；來不及的，<HH:MM> 前到 <ROOM> 門口的收作業資料夾，逾時不候。
-- 順帶：HW1 已 graded；期中考 <YYYY/MM/DD>（週<W>），範圍 <UNITS>。
-```
-
-Rules for this shape:
-
-- **Four sources, and each adds something the others lack.** The announcement
-  gives the venue and the hand-in hours; `/assignments` gives the UTC instant and
-  the submission type; `/submissions/self` gives his state; the standing
-  「作業規定」 announcement gives the fallback drop-box and the cutoff. A report
-  with only the due_at is a date, not an answer.
-- **Say his submission state in the same breath.** 「還沒交」 next to the date is
-  the actionable half; a bare date reads as done.
-- **On-paper assignments carry logistics the API cannot.** `submission_types:
-  ["on_paper"]` means `lock_at` is usually `None` — the API has no upload window
-  to close — so **a null `lock_at` is not a missing deadline**. The real deadline
-  is the course's physical hand-in time, which lives in the announcement, and
-  「逾時不候」 means there is no grace period to assume.
-- **A postponed assignment moves in the announcement and in `due_at` together**,
-  but the announcement is the one that states the *place and hours*. When both
-  agree, report both; when the announcement moves the date, the live `due_at`
-  wins for the instant and the announcement wins for the logistics.
-- **The 作業規定 announcement is a standing rule, not a one-off.** Fetch it once
-  per course and keep it: it explains 「上課前交給助教」 and the door drop-box,
-  which resolves what the due time actually means for a paper assignment.
-
-### Programmatic access to the same data
-
-For 「今天有什麼交」 or a per-course due/submission table, use the module
-directly instead of grepping CLI output:
-
-```python
-import sys; sys.path.insert(0, "<skill>/scripts")
-import ntu_fetch as nf
-
-user, pw = nf.load_credentials(os.path.expanduser("~/.ntu-creds.json"))  # TUPLE
-s = nf._session(); nf.cool_login(s, user, pw)
-
-for c in nf.fetch_courses(s):                 # current-term roster, homepage parse
-    for a in nf.fetch_assignments(s, c["id"]):
-        print(a["name"], a.get("due_at"), a.get("lock_at"), a.get("submission_types"))
-        sub = nf.fetch_own_submission(s, c["id"], a["id"])
-        print("  ", sub.get("workflow_state"), sub.get("submitted_at"))
-```
-
-Helper signatures that bite if assumed:
-
-- `load_credentials(path)` → `(user, password)` **tuple**, not a dict. A
-  dict-shaped access raises `AttributeError`. **It does NOT expand `~`** — the
-  credential file guard stats the raw path and raises
-  `FileNotFoundError: '~/.ntu-creds.json'`. Pass
-  `os.path.expanduser("~/.ntu-creds.json")` yourself.
-- `cool_login(s, user, password)` — the login function is `cool_login`, not
-  `login`.
-- `fetch_own_submission(s, course_id, assignment_id)` → the submission dict.
-- `fetch_courses(s)` → dicts with `id` and `longName`; `longName` may carry a
-  trailing course-code suffix (「… - <COURSE-NAME> (ESOE<CODE>)」), so match on a
-  substring, never equality.
-
-### The scope you cannot fetch is the scope you must read
-
-Some exam scope is not in the API at all. For one course, the scope had to be
-derived from the syllabus's per-week `Reading -> G.T.M.: pp. X~Y` lines, and
-**mapping page ranges to chapters needs the book's own running headers**, not its
-table of contents:
-
-```python
-# for each range, read the first and last page's running header
-# "9.2.2 Hash Functions" / "Chapter 5. Stacks, Queues, and Deques"
-doc = pymupdf.open(book)
-hdr = doc[printed + offset].get_text().split("\n")[0]
-```
-
-The TOC parse failed on a 738-page PDF (the dot leaders and page numbers are
-extracted in an unusable order), and the first header-based attempt produced
-false chapters because it matched a number at the top of any page. Reading the
-header of a *known* page and confirming the range's endpoints against it is what
-made the mapping trustworthy.
-
-**The result is worth checking by hand, because a wrong scope is silent.** The
-header-based mapping found that the recorded midterm scope (5 chapters) was
-missing three: Stacks/Queues (Ch5), Trees (Ch7), and Memory Management (Ch14).
-Ch14 is the one that is easy to lose — it is the W6 reading, a six-page range
-(666-671) inside a chapter about garbage collection, sitting in a week titled
-「Binary Search and Inheritance」 where nobody expects it.
-
-### The roster answers 「what year is he in?」 without asking
-
-The current-term roster is a read-only fact about which academic term the
-student is in, and the term label is right there in the homepage JSON
-(`"term": "115-1 (2026 Fall)"`). A course set that is unmistakably a
-particular stage (junior-level engineering courses, not capstone-level ones)
-cross-checks the term.
-
-**Use it as an independent cross-check, not as the primary source.** The
-student ID's year digits and the course roster are two different routes to the
-same answer; agreement between them is what makes the answer a fact rather
-than a coincidence of one bad lookup. When they disagree, the disagreement is
-the finding — report which reading each source supports instead of picking
-one.
-
-**The roster sweep also answers 「what did he already hand in?」 in one pass.**
-`--list-submissions` over every current course returns each assignment's
-`workflow_state` — so it covers the assignments that are *not* in any
-announcement, and the graded ones alongside the unsubmitted ones. That makes
-it the cheap way to discover both a finished submission (so you stop telling
-him to do it) and a missed one (so you do not).
-
-### The `submission_types` field tells you whether it can be done online
-
-`submission_types` distinguishes `online_upload` (upload before the
-`lock_at`) from `on_paper` (hand it in physically, to a person, at a place).
-The two have completely different failure modes, and a plan that treats an
-`on_paper` assignment as an upload will be wrong about the deadline: the
-physical hand-in has to happen while someone is there to receive it, which is
-a wall-clock constraint the API's `due_at` does not capture. Report the
-distinction explicitly, and when an `on_paper` item shares a date with an
-online item, the physical one is the one to schedule first.
-
-Two facts to carry into the report:
-
-**a course with zero announcements this term may still have all its material**, in the
-Files tree and already downloaded. Check the local files before treating a missing
-announcement as a gap.
-
-**an announcement states a date; whether that date becomes an action is the
-caller's decision.** The tool reports what the course said and stops there.
-
-Do not run a Flask daemon. It is a second always-on service for a one-endpoint
-need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
 
 ## This repo's own layout — where to change what
 
@@ -1293,56 +700,48 @@ Editing server-side files from a laptop IDE.
 
 ## Reference
 
-- `references/seating-chart-lookup.md` — reading an exam seating chart: room
-  heading per page, ID→row coordinates, the seat-number floor map + 梯次表 type,
-  and the two-exams-two-charts trap.
+### Read these for a course question
+
+- `references/reading-course-state.md` — submissions, course pages, the calendar
+  page, and how to read a deadline.
+- `references/exam-scopes-and-course-material.md` — the Files tree's lock states,
+  announcement attachments, seating charts, encrypted PDFs, and telling one
+  course's file from another's.
+- `references/homework-and-due-dates.md` — the homework roster, what a syllabus
+  plans but never assigns, paper hand-in versus upload, and the shape of a
+  complete answer.
+
+### Read these before changing the tool
+
 - `references/api-findings.md` — the platform's real response shapes, the pagination
   contract, the User-Agent filter, the credential shape, and which claims are
   verified against the live site versus inferred.
-- `references/ceiba-unreachable.md` — why Ceiba is not implemented: connect timeout with
-  a passing control test, and what that rules in and out.
+- `references/testing-and-interpreters.md` — **read before changing the script.** Test with
+  the same interpreter the user will type; `requests` is the only third-party import and
+  that is deliberate; the stdlib swap caught a real first-form-vs-trap-form bug.
+- `references/release-and-packaging.md` — how the two install paths differ, why a
+  wheel in `dist/` is not a release, the release checklist, and the branch→main→
+  PyPI chain a fix has to travel.
 - `references/computer-assignment-retrieval.md` — how to get a CA handout when the
   Files tree is empty, including the two-hop download and the signed-URL rule.
 - `references/manifest-status.md` — what "did we fetch this?" can mean without a
   manifest, and why the absence of one is a deliberate trade.
-- `references/release-and-packaging.md` — how the two install paths differ, why a
-  wheel in `dist/` is not a release, the release checklist, and the branch→main→
-  PyPI chain a fix has to travel.
-- `references/testing-and-interpreters.md` — **read before changing the script.** Test with
-  the same interpreter the user will type; `requests` is the only third-party import and
-  that is deliberate; the stdlib swap caught a real first-form-vs-trap-form bug.
+- `references/seating-chart-lookup.md` — reading an exam seating chart: room
+  heading per page, ID→row coordinates, the seat-number floor map + 梯次表 type,
+  and the two-exams-two-charts trap.
+
+### Read this to explain a boundary
+
+- `references/ceiba-unreachable.md` — why Ceiba is not implemented: connect timeout with
+  a passing control test, and what that rules in and out.
 
 ## Pitfalls
+
+### Reading the course
 
 - ❌ Don't report 「no attachments」 from an announcement sweep. The body never carries
   the file list; the Files tree does. On the current term that is the difference between
   0 files and 96 (91 in the tree, 5 bound to announcements).
-- ❌ Don't walk `/courses/{id}/folders` and recurse. It is a flat list at every depth,
-  so every non-root folder gets counted two or three times.
-- ❌ Don't assume one page is the whole list. Canvas defaults to `per_page=10` and caps
-  the parameter — 27 of 91 files were missing that way, with nothing to notice.
-- ❌ Don't rely on `/folders/root` alone. It 403s on a non-credit course while the list
-  endpoint still answers; falling back to the parentless entries keeps the course.
-- ❌ Don't compose API paths for the Files tree. `/api/v1/courses/{id}/files` is the
-  obvious guess and it 404s. Read `files_url` / `folders_url` off the folder objects.
-- ❌ Don't trust a download's status code. An expired signed URL returns 200 with the
-  login page; check magic bytes.
-- ❌ Don't file an image-only PDF as unusable because extraction returned nothing. Render
-  it and read the image — that is how a 0-character quiz-scope worksheet becomes a
-  readable problem statement.
-- ❌ Don't put a file's signed `url` in a report, a log, or a commit. It authenticates.
-- ❌ Don't download straight into a working notes collection. Stage it, list it, and let
-  the filing decision stay his.
-- ❌ Don't report an `on_paper` assignment's deadline from `due_at` alone. `lock_at`
-  is usually `None` for paper hand-ins, and the venue, the hand-in hours and the
-  「逾時不候」 cutoff live only in the announcement — the API has no upload window
-  to close. A null `lock_at` is not a missing deadline.
-- ❌ Don't skip the student's own `workflow_state` when answering a due-date
-  question. 「什麼時候交」 and 「我交了沒」 are one deliverable; the date alone
-  reads as done.
-- ❌ Don't trust `load_credentials()` to return a dict — it returns a
-  `(user, password)` tuple — and don't pass it a bare `~` path; the credential
-  guard stats the literal string and fails. Expand `~` yourself.
 - ❌ Don't treat an empty `/assignments` exam list as 「this course has no
   exam」 — the course calendar page (`/pages/ke-cheng-xing-shi-li`) carries
   exam rows that never appear as assignments.
@@ -1351,7 +750,45 @@ Editing server-side files from a laptop IDE.
 - ❌ Don't answer one exam's seat from another exam's chart. A course publishes a
   chart per exam, and the paper chart (IDs in seats) and the lab chart (seat-number
   map + 梯次表) key differently.
-- ❌ Don't claim 「新版本已上架」 because the version number or a wheel in
-  `dist/` moved — those are build artifacts. Verify against the PyPI index.
 - ❌ Don't report a lab exam's venue from the seating chart. The chart carries a
   大門 marker, not a room; the room comes from an earlier announcement — name it.
+
+### Walking the Files tree
+
+- ❌ Don't walk `/courses/{id}/folders` and recurse. It is a flat list at every depth,
+  so every non-root folder gets counted two or three times.
+- ❌ Don't assume one page is the whole list. Canvas defaults to `per_page=10` and caps
+  the parameter — 27 of 91 files were missing that way, with nothing to notice.
+- ❌ Don't rely on `/folders/root` alone. It 403s on a non-credit course while the list
+  endpoint still answers; falling back to the parentless entries keeps the course.
+- ❌ Don't compose API paths for the Files tree. `/api/v1/courses/{id}/files` is the
+  obvious guess and it 404s. Read `files_url` / `folders_url` off the folder objects.
+
+### Downloading
+
+- ❌ Don't trust a download's status code. An expired signed URL returns 200 with the
+  login page; check magic bytes.
+- ❌ Don't file an image-only PDF as unusable because extraction returned nothing. Render
+  it and read the image — that is how a 0-character quiz-scope worksheet becomes a
+  readable problem statement.
+- ❌ Don't put a file's signed `url` in a report, a log, or a commit. It authenticates.
+- ❌ Don't download straight into a working notes collection. Stage it, list it, and let
+  the filing decision stay his.
+
+### Deadlines and submissions
+
+- ❌ Don't report an `on_paper` assignment's deadline from `due_at` alone. `lock_at`
+  is usually `None` for paper hand-ins, and the venue, the hand-in hours and the
+  「逾時不候」 cutoff live only in the announcement — the API has no upload window
+  to close. A null `lock_at` is not a missing deadline.
+- ❌ Don't skip the student's own `workflow_state` when answering a due-date
+  question. 「什麼時候交」 and 「我交了沒」 are one deliverable; the date alone
+  reads as done.
+
+### Using the tool
+
+- ❌ Don't trust `load_credentials()` to return a dict — it returns a
+  `(user, password)` tuple — and don't pass it a bare `~` path; the credential
+  guard stats the literal string and fails. Expand `~` yourself.
+- ❌ Don't claim 「新版本已上架」 because the version number or a wheel in
+  `dist/` moved — those are build artifacts. Verify against the PyPI index.
