@@ -396,6 +396,47 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
     ID_RE = re.compile(r"(?<![0-9])[56][0-9]{4}(?![0-9])")
     CODE_RE = re.compile(r"ESOE[0-9]{4}")
 
+    # --- the rules that were missing when the guard was first written ---
+    #
+    # The original pair above catches a course id and an ESOE code. It does
+    # NOT catch the four things that actually leaked:
+    #
+    #   1. the six-digit course code as printed on the handout header, which
+    #      is written with a space in the middle and so misses ID_RE
+    #   2. the student id, `B` + eight digits -- a different shape entirely
+    #   3. a literal password pasted into an `authenticate(...)` call
+    #   4. the course TITLES and the room numbers, which are the identifying
+    #      part: a roster of four real course names with their exam dates
+    #      says who this account belongs to as clearly as a course id does
+    #
+    # Rules 1-3 are hard identifiers and need no context. Rule 4 needs
+    # context, because the same words appear in ordinary prose ("the Files
+    # tree structure", "a maths course"), so a title only counts when it
+    # sits near a course-context marker.
+    #
+    # Nothing here lists a real course name, student id or password: a
+    # denylist of the leaked values would itself be the leak. Every rule is
+    # a shape, so it also catches values added after this file was written.
+    STUDENT_ID_RE = re.compile(r"(?<![A-Za-z0-9])[BR]\d{8}(?![0-9])")
+    COURSE_CODE_RE = re.compile(r"(?<!\d)[56]\d{2}\s?\d{5}(?!\d)")
+    PASSWORD_RE = re.compile(r"authenticate\(\s*[\"'][^\"']+[\"']\s*\)")
+    # A course title: a Chinese discipline noun, optionally with a leading
+    # qualifier and an optional trailing numeral (<COURSE>, <COURSE>, 數學).
+    CN_TITLE_RE = re.compile(
+        r"(?<![一-鿿])[一-鿿]{2,4}(?:力學|數學|電路|結構|物理|化學|電子)"
+        r"(?:[一二三四五六七八九])?(?![一-鿿])")
+    EN_TITLE_RE = re.compile(
+        r"\b[A-Z][a-z]+ (?:Mechanics|Circuit Design"
+        r"|Electronics|Structures)\b"
+        r"|\b[A-Z][a-z]+ [A-Z][a-z]+ Structures\b")
+    ROOM_RE = re.compile(r"(?<![0-9])\d{2,3}\s?(?:教室|實驗室)")
+    # Words that mean "this line is about a course", not "this line is prose".
+    CONTEXT_RE = re.compile(
+        r"期中考|期末考|模擬考|小考|課程|課堂|助教|講義|作業|學期|科目"
+        r"|\bcourses?\b|\bcourse\b|\broster\b|\bterm\b|\bhomework\b"
+        r"|\bHW\d|\bCA\d|ESOE|cool\.ntu|/courses/")
+    CONTEXT_LINES = 3
+
     def _repo_files(self):
         """Files that would actually be published: the git-tracked set.
 
@@ -426,6 +467,73 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
             hit = self.CODE_RE.search(src)
             self.assertIsNone(
                 hit, f"ESOE course code {hit.group(0) if hit else ''!r} in {path}")
+
+    def test_no_student_ids_anywhere(self):
+        """`B` + eight digits is a student id, and it is not a course id."""
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            hit = self.STUDENT_ID_RE.search(src)
+            self.assertIsNone(
+                hit, f"student id {hit.group(0) if hit else ''!r} in {path}")
+
+    def test_no_six_digit_course_codes_anywhere(self):
+        """The handout header carries the course code as six digits with a
+        space in the middle, so the five-digit course-id rule never sees it."""
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            hit = self.COURSE_CODE_RE.search(src)
+            self.assertIsNone(
+                hit, f"course code {hit.group(0) if hit else ''!r} in {path}")
+
+    def test_no_literal_passwords_anywhere(self):
+        """A password pasted into an `authenticate(...)` call is a leak, even
+        when the password is one the course published."""
+        for path in self._repo_files():
+            src = path.read_text(encoding="utf-8", errors="replace")
+            hit = self.PASSWORD_RE.search(src)
+            self.assertIsNone(
+                hit, f"literal password {hit.group(0) if hit else ''!r} in {path}")
+
+    def test_no_course_titles_in_course_context(self):
+        """A course title plus an exam date says whose account this is.
+
+        The same words appear in ordinary prose, so a title only counts when
+        a course-context marker sits within a few lines of it. Without the
+        context window this rule fires on 'the Files tree structure'."""
+        for path in self._repo_files():
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            for i, line in enumerate(lines):
+                for rx, label in ((self.CN_TITLE_RE, "course title"),
+                                  (self.EN_TITLE_RE, "course title")):
+                    hit = rx.search(line)
+                    if not hit:
+                        continue
+                    lo = max(0, i - self.CONTEXT_LINES)
+                    hi = min(len(lines), i + self.CONTEXT_LINES + 1)
+                    window = "\n".join(lines[lo:hi])
+                    if not self.CONTEXT_RE.search(window):
+                        continue
+                    self.fail(
+                        f"{label} {hit.group(0)!r} in {path}:{i + 1} "
+                        f"near a course-context marker:\n{line.strip()[:160]}")
+
+    def test_no_room_numbers_in_course_context(self):
+        """A room number is only identifying in a course context; the same
+        digits appear in a port number or a code elsewhere."""
+        for path in self._repo_files():
+            lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+            for i, line in enumerate(lines):
+                hit = self.ROOM_RE.search(line)
+                if not hit:
+                    continue
+                lo = max(0, i - self.CONTEXT_LINES)
+                hi = min(len(lines), i + self.CONTEXT_LINES + 1)
+                window = "\n".join(lines[lo:hi])
+                if not self.CONTEXT_RE.search(window):
+                    continue
+                self.fail(
+                    f"room {hit.group(0)!r} in {path}:{i + 1} "
+                    f"near a course-context marker:\n{line.strip()[:160]}")
 
 
 class _PagedResponse(_FakeResponse):

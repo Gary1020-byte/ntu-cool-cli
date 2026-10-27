@@ -92,8 +92,8 @@ the authenticated response shape.
 so every course the tool lists is current-term. `fetch_all_courses_historical()`
 exists but is not reachable from any flag — measured 2026-10-23 on a real
 account it answered with 10 courses against a current roster of 7, the extras
-being last term's (`【114-1 寒假】…`, `114 微積分學前自我檢測`, `<COURSE>`,
-`工程圖學`) plus three entries with `name: null` and
+being last term's (a term-bracket course title, a placement self-test, and two
+engineering courses) plus three entries with `name: null` and
 `access_restricted_by_date: true`. **Every one of them had `term: null`**, so
 there is no term field to filter on afterwards.
 
@@ -662,6 +662,35 @@ requirement (single PDF), and the report-writing rubric. **A course can have zer
 announcements and still be fully documented here** — the 4-announcement sweep for
 a course hid all of it.
 
+### The course calendar page carries exams that `/assignments` does not list
+
+A course's 課程行事曆 page (`/pages/ke-cheng-xing-shi-li`) is a week-by-week
+HTML table whose 主題 column names the exam and whose 課本範圍 column gives
+the chapters. **It is a distinct source from `/assignments`, and it often holds
+exams the assignment list never mentions.**
+
+Measured: one course's `/assignments` listed only 期中考一, while its calendar
+page carried 期中考一, 期中考二 and 期末考 — with the scope of each
+(`midterm exam 1 / Chapters 1-3`, `midterm exam 2 / Chapters 4-6`,
+`final exam / Chapters 1-9, 13`). Two of the three exams were invisible to an
+assignment sweep.
+
+Parse it as a table, not as prose — the page body is one `<table>` of
+`<tr>/<td>`:
+
+```python
+import re, html
+body = json.loads(r.text)["body"]
+for tr in re.findall(r"<tr.*?</tr>", body, re.S):
+    cells = [re.sub(r"\s+", " ", html.unescape(re.sub("<[^>]+>", " ", c))).strip()
+             for c in re.findall(r"<t[dh].*?</t[dh]>", tr, re.S)]
+    if any(cells):
+        print(" | ".join(cells))
+```
+
+The 截止 column of that table is the assignment tag of the week
+(`HW#6`), **not** a due date — the due date still comes from `/assignments`.
+
 ### A course can have NO modules, NO pages, NO quizzes, and NO calendar
 
 **CLI flag: `--list-modules`.**
@@ -861,9 +890,10 @@ split is published. Download it via the two-hop file fetch, not by guessing a pa
 
 ### A course code and a student ID differ by one letter — check which one you have
 
-NTU ESOE course codes are six digits (`<SIX-DIGIT-CODE>` for <COURSE> / ESOE <CODE>) and appear
-in the handout's own header line, so they are trivially mistaken for the student ID
-(`B` + eight digits). The two are used in different places and neither is guessable:
+NTU ESOE course codes are six digits (`<SIX-DIGIT-CODE>` / ESOE `<CODE>`) and
+appear in the handout's own header line, so they are trivially mistaken for the
+student ID (`B` + eight digits). The two are used in different places and neither is
+guessable:
 
 | the value | where it belongs | where to get it |
 |---|---|---|
@@ -904,7 +934,7 @@ for i in range(d.page_count):
             print("row:", " | ".join(v[4] for v in row))
 ```
 
-The room is the heading on that page (「<ROOM> 教室座位表」 / 「<ROOM> 教室座位表」), and the
+The room is the heading on that page (「<ROOM> 教室座位表」), and the
 row's horizontal order gives the seat.
 
 **A miss is ambiguous between "wrong ID" and "not on the chart"** — so before
@@ -912,18 +942,37 @@ reporting that a student is not on a chart, confirm you searched for the ID and 
 for a course code. A chart of ~66 IDs with no hit for a value that is visibly a
 course code is a finding about the *value*, not about the student.
 
+### Two seating-chart shapes — read the chart type before reading the chart
+
+A seating chart comes in two shapes and they need different parsers. **Type A**
+lists student IDs placed in seat positions (the room is the page heading; find the
+ID, reconstruct its row from word coordinates). **Type B** is a floor map of seat
+numbers plus a separate 梯次表 whose rows are seat numbers and whose cells are
+student IDs — so ID → seat number → time slot comes from the table, and seat
+number → physical place comes from the map, which needs a render and a vision
+read.
+
+**One course can publish one chart per exam** (a paper-midterm chart and a lab
+chart days later). They are different documents with different keying; answering
+one exam's seat from the other chart is wrong. And **the chart is not the venue** —
+a lab exam's room came from an earlier announcement, not from the chart, so name
+that announcement as the venue's source.
+
+Full recipe, coordinate code and reporting shape: `references/seating-chart-lookup.md`.
+
 ### PDFs may be password-protected — render and read the image
 
 `<SYLLABUS>.pdf` and `<CLASS-NOTES>.pdf` (both
-a course) open with `is_encrypted=True`. The lab-notes password `<PASSWORD>`
-(from the 9/14 announcement) authenticates the syllabus and class notes
-(`d.authenticate('<PASSWORD>')` → 6 = success) but **not** the seating chart.
+a course) open with `is_encrypted=True`. The lab-notes password (published in a
+course announcement, so it is course-specific and not a secret of the tool)
+authenticates the syllabus and class notes (`d.authenticate(PASSWORD)` → 6 =
+success) but **not** the seating chart.
 
 Unlock first, then measure each page — a partially-extractable document is the case that
 misleads:
 
 ```
-doc = pymupdf.open(path); doc.authenticate("<PASSWORD>")
+doc = pymupdf.open(path); doc.authenticate(PASSWORD)   # from the course's announcement
 for i in range(doc.page_count):
     print(i + 1, len(doc[i].get_text().strip()))
 doc[i].get_pixmap(dpi=140).save(f"p{i+1}.png")   # then read the image
@@ -1036,6 +1085,76 @@ template class DList<std::string>;
   assignments, so `assignment["attachment"]` is not the way to find the file
 - `lock_at` is where the upload window actually closes (see § submissions/self)
 
+### 「X 作業啥時交」— the answer shape
+
+This is the standing question, and it has a fixed answer shape. Give a one-line
+headline first (date + clock + venue), then the sources that back it, then the
+student's own status, then the policy, then adjacent facts you already have:
+
+```
+HW2：<YYYY/MM/DD>（週<W>）<HH:MM> 前，<ROOM>。
+- 公告「HW2繳交」：延至 <YYYY/MM/DD> 週<W>繳交，<HH:MM>-<HH:MM> 到 <ROOM> 交，並取回 HW1。
+- /assignments：due_at = ...Z = 台北 <HH:MM>，submission_types = on_paper。
+- 你的 HW2 目前 unsubmitted — 還沒交。
+- 作業規定：當周有作業要交，請上課前交給助教；來不及的，<HH:MM> 前到 <ROOM> 門口的收作業資料夾，逾時不候。
+- 順帶：HW1 已 graded；期中考 <YYYY/MM/DD>（週<W>），範圍 <UNITS>。
+```
+
+Rules for this shape:
+
+- **Four sources, and each adds something the others lack.** The announcement
+  gives the venue and the hand-in hours; `/assignments` gives the UTC instant and
+  the submission type; `/submissions/self` gives his state; the standing
+  「作業規定」 announcement gives the fallback drop-box and the cutoff. A report
+  with only the due_at is a date, not an answer.
+- **Say his submission state in the same breath.** 「還沒交」 next to the date is
+  the actionable half; a bare date reads as done.
+- **On-paper assignments carry logistics the API cannot.** `submission_types:
+  ["on_paper"]` means `lock_at` is usually `None` — the API has no upload window
+  to close — so **a null `lock_at` is not a missing deadline**. The real deadline
+  is the course's physical hand-in time, which lives in the announcement, and
+  「逾時不候」 means there is no grace period to assume.
+- **A postponed assignment moves in the announcement and in `due_at` together**,
+  but the announcement is the one that states the *place and hours*. When both
+  agree, report both; when the announcement moves the date, the live `due_at`
+  wins for the instant and the announcement wins for the logistics.
+- **The 作業規定 announcement is a standing rule, not a one-off.** Fetch it once
+  per course and keep it: it explains 「上課前交給助教」 and the door drop-box,
+  which resolves what the due time actually means for a paper assignment.
+
+### Programmatic access to the same data
+
+For 「今天有什麼交」 or a per-course due/submission table, use the module
+directly instead of grepping CLI output:
+
+```python
+import sys; sys.path.insert(0, "<skill>/scripts")
+import ntu_fetch as nf
+
+user, pw = nf.load_credentials(os.path.expanduser("~/.ntu-creds.json"))  # TUPLE
+s = nf._session(); nf.cool_login(s, user, pw)
+
+for c in nf.fetch_courses(s):                 # current-term roster, homepage parse
+    for a in nf.fetch_assignments(s, c["id"]):
+        print(a["name"], a.get("due_at"), a.get("lock_at"), a.get("submission_types"))
+        sub = nf.fetch_own_submission(s, c["id"], a["id"])
+        print("  ", sub.get("workflow_state"), sub.get("submitted_at"))
+```
+
+Helper signatures that bite if assumed:
+
+- `load_credentials(path)` → `(user, password)` **tuple**, not a dict. A
+  dict-shaped access raises `AttributeError`. **It does NOT expand `~`** — the
+  credential file guard stats the raw path and raises
+  `FileNotFoundError: '~/.ntu-creds.json'`. Pass
+  `os.path.expanduser("~/.ntu-creds.json")` yourself.
+- `cool_login(s, user, password)` — the login function is `cool_login`, not
+  `login`.
+- `fetch_own_submission(s, course_id, assignment_id)` → the submission dict.
+- `fetch_courses(s)` → dicts with `id` and `longName`; `longName` may carry a
+  trailing course-code suffix (「… - <COURSE-NAME> (ESOE<CODE>)」), so match on a
+  substring, never equality.
+
 ## Filing the result — announcements become inbox tasks, never the active list
 
 Fetched announcements contain deadlines, and it is tempting to convert each one into a
@@ -1079,10 +1198,10 @@ Measured 2026-10-23 on a real vault (751 wiki pages):
 
 | fact | copies |
 |---|---|
-| <COURSE> 期 midterm | 16 |
-| <COURSE> 期 midterm | 29 |
-| <COURSE> 期中考一 10/14 | 11 |
-| <COURSE> 期 midterm | 7 |
+| course A 期中考 | 16 |
+| course B 期中考 | 29 |
+| course C 期中考一 | 11 |
+| course D 期中考 | 7 |
 
 One moved deadline had reached 9 files; one wrong exam scope had reached 7.
 **The cost of a correction is the copy count, not the edit.**
@@ -1094,6 +1213,19 @@ fetch_courses.py    → data/course_facts.json  (gitignored, rebuildable)
 drift_check.py      → scans live pages, reports mismatches, edits nothing
 cron                → refresh + check every morning
 ```
+
+In this user's setup these two live at `~/.hermes/scripts/ntu_courses.py` and
+`~/.hermes/scripts/ntu_drift_check.py`; run them from the repo root and they
+write `Personal-OS/wiki/projects/digest-dashboard/data/course_facts.{json,md}`
+and print findings to stdout. Run the generator first — the checker compares
+against the fact table, so a stale table makes it report on stale facts.
+
+**When the checker reports a finding, check whether it is a real drift before
+acting.** A line like 「✅ 已繳交 (2026-10-24 實查 submitted)」 carries a date
+that is the day the state was *checked*, not a deadline; the checker flagged it
+as a stale deadline because the sentence shape looks like a due-date claim.
+That is a checker false positive, and the fix belongs in the checker's
+false-positive guards, not in the vault page.
 
 Two design rules that matter:
 
@@ -1117,6 +1249,7 @@ false alarms, and a report that is always noisy is a report that gets ignored.
 | a date inside a capture file's name is a filename | strip path tokens before matching |
 | 「我先前寫…是錯的」 quotes the stale value | lines with negation/correction wording are not drift |
 | 「due 10/29、lock 10/30」 states two different facts | a `lock_at` date is not a `due_at` date |
+| 「✅ 已繳交 (2026-10-24 實查 submitted)」 quotes the day the state was checked | a date followed by 實查／查於／verified／checked is a *query* date, not a deadline — ignore it |
 
 A checker that reports zero must be *proven* to detect drift: inject a known-stale
 value into a live page, confirm it fires, revert. A checker that has only ever
@@ -1124,7 +1257,7 @@ reported "clean" is untested.
 
 ### The scope you cannot fetch is the scope you must read
 
-Some exam scope is not in the API at all. For <COURSE>, the scope had to be
+Some exam scope is not in the API at all. For one course, the scope had to be
 derived from the syllabus's per-week `Reading -> G.T.M.: pp. X~Y` lines, and
 **mapping page ranges to chapters needs the book's own running headers**, not its
 table of contents:
@@ -1198,6 +1331,9 @@ need, and it pulls in an ORM the pinned versions cannot support on this interpre
 
 ## Reference
 
+- `references/seating-chart-lookup.md` — reading an exam seating chart: room
+  heading per page, ID→row coordinates, the seat-number floor map + 梯次表 type,
+  and the two-exams-two-charts trap.
 - `references/api-findings.md` — the platform's real response shapes, the pagination
   contract, the User-Agent filter, the credential shape, and which claims are
   verified against the live site versus inferred.
@@ -1207,6 +1343,9 @@ need, and it pulls in an ORM the pinned versions cannot support on this interpre
   Files tree is empty, including the two-hop download and the signed-URL rule.
 - `references/manifest-status.md` — what "did we fetch this?" can mean without a
   manifest, and why the absence of one is a deliberate trade.
+- `references/release-and-packaging.md` — how the two install paths differ, why a
+  wheel in `dist/` is not a release, the release checklist, and the branch→main→
+  PyPI chain a fix has to travel.
 - `references/testing-and-interpreters.md` — **read before changing the script.** Test with
   the same interpreter the user will type; `requests` is the only third-party import and
   that is deliberate; the stdlib swap caught a real first-form-vs-trap-form bug.
@@ -1232,3 +1371,25 @@ need, and it pulls in an ORM the pinned versions cannot support on this interpre
 - ❌ Don't put a file's signed `url` in a report, a log, or a commit. It authenticates.
 - ❌ Don't download straight into a working notes collection. Stage it, list it, and let
   the filing decision stay his.
+- ❌ Don't report an `on_paper` assignment's deadline from `due_at` alone. `lock_at`
+  is usually `None` for paper hand-ins, and the venue, the hand-in hours and the
+  「逾時不候」 cutoff live only in the announcement — the API has no upload window
+  to close. A null `lock_at` is not a missing deadline.
+- ❌ Don't skip the student's own `workflow_state` when answering a due-date
+  question. 「什麼時候交」 and 「我交了沒」 are one deliverable; the date alone
+  reads as done.
+- ❌ Don't trust `load_credentials()` to return a dict — it returns a
+  `(user, password)` tuple — and don't pass it a bare `~` path; the credential
+  guard stats the literal string and fails. Expand `~` yourself.
+- ❌ Don't treat an empty `/assignments` exam list as 「this course has no
+  exam」 — the course calendar page (`/pages/ke-cheng-xing-shi-li`) carries
+  exam rows that never appear as assignments.
+- ❌ Don't read the 截止 column of a course calendar table as a due date; it is
+  the assignment tag of that week.
+- ❌ Don't answer one exam's seat from another exam's chart. A course publishes a
+  chart per exam, and the paper chart (IDs in seats) and the lab chart (seat-number
+  map + 梯次表) key differently.
+- ❌ Don't claim 「新版本已上架」 because the version number or a wheel in
+  `dist/` moved — those are build artifacts. Verify against the PyPI index.
+- ❌ Don't report a lab exam's venue from the seating chart. The chart carries a
+  大門 marker, not a room; the room comes from an earlier announcement — name it.

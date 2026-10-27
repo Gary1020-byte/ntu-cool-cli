@@ -28,6 +28,7 @@ jobs:
           - { python-version: "3.10", os: "ubuntu-latest" }
           - { python-version: "3.11", os: "ubuntu-latest" }
           - { python-version: "3.12", os: "ubuntu-latest" }
+          - { python-version: "3.13", os: "ubuntu-latest" }
 
     steps:
       - uses: actions/checkout@v7
@@ -41,7 +42,7 @@ jobs:
         run: python3 -m pip install --upgrade pip && python3 -m pip install -r requirements.txt
 
       - name: Run the offline test suite
-        # 53 tests, no network, no credentials, no login. They can never touch
+        # 84 tests, no network, no credentials, no login. They can never touch
         # cool.ntu.edu.tw.
         run: python3 -m unittest discover -s tests -v
 
