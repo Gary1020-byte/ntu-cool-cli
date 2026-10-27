@@ -239,8 +239,8 @@ def fetch_all_courses_historical(s: requests.Session) -> list[dict]:
 
     This endpoint is a trap. Measured 2026-10-23 on a real account: it answered
     with 10 courses while the current roster had 7. The extras were last term's
-    (`【114-1 寒假】毒道之處`, `114 微積分學前自我檢測`, `工程力學一`,
-    `工程圖學`) plus three entries with `name: null` and
+    (a term-bracket course title, a placement self-test, and two engineering
+    courses) plus three entries with `name: null` and
     `access_restricted_by_date: true`. **Every one of them carried
     `term: null`**, so there is no term field to filter on — you cannot tell
     a stale course from a current one after the fact.
