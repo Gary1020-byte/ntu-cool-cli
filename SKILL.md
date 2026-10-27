@@ -198,6 +198,27 @@ a password.**
 - Do not commit a credential file. If one is created inside a git repo, check `.gitignore`
   covers it before it is ever staged.
 
+## What this tool does — and where it stops
+
+`ntu-cool-cli` **reads** NTU Cool. That is the whole job.
+
+| it does | it does not |
+|---|---|
+| logs in and fetches announcements | file a note anywhere |
+| lists the Files tree, assignments, pages, modules, handouts | create a task, or touch a notes system |
+| reports `due_at`, `lock_at` and your `workflow_state` | decide what you should do about a deadline |
+| downloads files into a directory you name | keep them, or file them into a collection |
+| reports what the course actually said | infer a scope the course never stated |
+
+It writes exactly one thing: a dated markdown capture of the announcements you
+asked for, into the directory you named with `--out`. Everything else is stdout.
+
+If you want to know what to do with that capture — where to file it, whether a
+deadline becomes a task, how to keep one fact from drifting across many pages —
+that is a note-taking system's job, not this tool's. It is a separate concern
+with a separate process, and nothing in the CLI depends on it.
+
+
 ## Workflow
 
 Installed as a command it is `ntu-cool-cli`; uninstalled it is
@@ -438,7 +459,10 @@ the expected working, before reading anything.
 python3 scripts/ntu_fetch.py --list-files --course a course --cred-file ~/.ntu-creds.json
 ```
 
-Read the output by **chapter + file role**, not by name similarity:
+**When an announcement says the quiz is the homework, fetch the pair.** The rule
+generalises: if the announcement says 「小考內容就是習題」 (or any equivalent), then
+look for **both** the blank worksheet and the solution key with the same numbering,
+and treat the optional-practice file as explicitly not graded. So the search is:
 
 ```
 <COURSE>_ch<N>_習題.pdf       ← the scope (blank, posted before class)
@@ -446,11 +470,14 @@ Read the output by **chapter + file role**, not by name similarity:
 <COURSE>_ch<N>_自主練習.pdf    ← 自主練習 is explicitly NOT graded
 ```
 
-**A frequency quiz covers one class period, not the textbook chapter.** A 「第二次小考」 on the
-second week of loading is a fraction of Chapter 2; planning to the chapter boundary costs hours on
-material nobody is graded on. The announcement's own word for the scope outranks the syllabus's
-chapter range.
+Read the output by **chapter + file role**, not by name similarity. The role is what
+distinguishes the scope from the key from the ungraded extra — the names only vary
+by course.
 
+**A frequency quiz covers one class period, not the textbook chapter.** A 「第二次小考」 on the
+second week of loading is a fraction of the chapter; planning to the chapter boundary costs
+hours on material nobody is graded on. The announcement's own word for the scope outranks
+the syllabus's chapter range.
 **The givens are often designed to pair up.** A distributed load whose total resolves to the point
 load printed beside it (`q × 1.2 m = 22 kN = P`) is the author confirming your reading. Record
 that beside the transcription so a later session does not see a suspicious digit and 「correct」 it
@@ -1001,7 +1028,7 @@ the schedule without the scope line says nothing about what is examined.
 ### An attachment filename is not an identity — check the first page
 
 The attachment cache holds several courses' files side by side, and the names collide with
-the courses' real chapter structure: `<CH-N>_note.pdf` through `<CH-N>_note.pdf` were all
+the courses' real chapter structure: `<CH-N>_note (1).pdf` through `<CH-N>_note.pdf` were all
 **a course** notes (a textbook's chapter decks plus the instructor's handwritten pages),
 `Chapter1_v1.pdf`/`Chapter2_v1.pdf` were **a course**, and three `<TERM>-mid*.pdf` files
 were byte-identical copies of **a course一**'s midterm paper — none of them the circuits
@@ -1057,24 +1084,6 @@ assignment for them.
 and modules before reporting anything as absent — for CA3, all three of Files
 tree / announcement attachments / local disk came up empty, and the handout was
 sitting in the assignment description the whole time.
-
-### The handout's own test file decides the build, not the .cpp files
-
-`TestDList.cpp` in DS CA3 does `#include "LockDList.cpp"` but does **not**
-include `DList.cpp` or `DListNode.cpp`. The template definitions of
-`DList<int>` are therefore never visible in that translation unit, and the link
-fails with `undefined reference to DList<int>::DList()` even though every
-`.cpp` is compiled.
-
-Fix that works whether the grader compiles the files separately or `#include`s
-them into one translation unit — explicit instantiation at the end of each file:
-
-```cpp
-template class DList<int>;
-template class DList<double>;
-template class DList<char>;
-template class DList<std::string>;
-```
 
 ### Assignment metadata worth capturing
 
@@ -1157,106 +1166,6 @@ Helper signatures that bite if assumed:
   trailing course-code suffix (「… - <COURSE-NAME> (ESOE<CODE>)」), so match on a
   substring, never equality.
 
-## Filing the result — announcements become inbox tasks, never the active list
-
-Fetched announcements contain deadlines, and it is tempting to convert each one into a
-task. **Do not.** Under the rule this repository recommends: a task the agent inferred from a source it
-read — a deadline in an announcement, a 「hard blocker」 — goes to an **inbox** with
-`reviewed_by_human: false` plus the reasoning and the questions needing a ruling.
-Only work the user named or approved goes to your active task list.
-
-The split that makes this cheap:
-
-| destination | what lands there |
-|---|---|
-| `~/captures/ntu-cool-<slug>-<date>.md` | the announcement text — one file per course, all of it, unfiltered |
-| a capture folder inside the notes system | the same file again, because a deadline in it is an action item and must be readable from wherever the tasks live |
-| an inbox folder | one task per inferred deadline, awaiting a ruling |
-
-The duplicated capture file is deliberate, not a mistake: the study record and the
-action record are kept apart. A source that matters to both belongs to both.
-
-Two facts to carry into the report rather than into a task body as settled:
-
-**a course with zero announcements this term may still have all its material**, in the
-Files tree and on disk already — check your notes and your downloads before treating a
-missing announcement as a gap. A task whose
-stated premise is 「unknown」 when the answer was already on disk is worse than no task.
-
-**a deadline in an announcement is not automatically an action item.** Same reasoning,
-different source: an announcement states a date, the decision to act on it is his. That
-is what an inbox is for.
-
-Do not run a Flask daemon. It is a second always-on service for a one-endpoint
-need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
-
-### A fact copied N times drifts N ways — generate the table, check mechanically
-
-A course fact (exam date, scope, submission deadline) gets copied into many vault
-files: the capture folder, the operation log, the concept, entity, task, project and
-overview pages, and the index. Every copy is written by hand, and nothing keeps them equal.
-
-Measured 2026-10-23 on a real vault (751 wiki pages):
-
-| fact | copies |
-|---|---|
-| course A 期中考 | 16 |
-| course B 期中考 | 29 |
-| course C 期中考一 | 11 |
-| course D 期中考 | 7 |
-
-One moved deadline had reached 9 files; one wrong exam scope had reached 7.
-**The cost of a correction is the copy count, not the edit.**
-
-The fix is not "be careful" — it is a generated table plus a mechanical comparison:
-
-```
-fetch_courses.py    → data/course_facts.json  (gitignored, rebuildable)
-drift_check.py      → scans live pages, reports mismatches, edits nothing
-cron                → refresh + check every morning
-```
-
-In this user's setup these two live at `~/.hermes/scripts/ntu_courses.py` and
-`~/.hermes/scripts/ntu_drift_check.py`; run them from the repo root and they
-write `Personal-OS/wiki/projects/digest-dashboard/data/course_facts.{json,md}`
-and print findings to stdout. Run the generator first — the checker compares
-against the fact table, so a stale table makes it report on stale facts.
-
-**When the checker reports a finding, check whether it is a real drift before
-acting.** A line like 「✅ 已繳交 (2026-10-24 實查 submitted)」 carries a date
-that is the day the state was *checked*, not a deadline; the checker flagged it
-as a stale deadline because the sentence shape looks like a due-date claim.
-That is a checker false positive, and the fix belongs in the checker's
-false-positive guards, not in the vault page.
-
-Two design rules that matter:
-
-1. **The table is a build artifact, not a page.** Put it in the same place as the
-   other generated data (`data/*.json`, gitignored). A hand-maintained "source of
-   truth" page is just one more copy to drift.
-2. **The checker reports; it does not fix.** It cannot tell whether a line asserts
-   a fact or narrates a change to it, so the verdict is his.
-
-**Exclude the capture folder and the operation log.** They are append-only history, and "we used to
-believe HW2 was 10/30" is *correct*. Counting them produces a report full of
-false alarms, and a report that is always noisy is a report that gets ignored.
-
-**Four false-positive guards, each learned from a real false positive:**
-
-| symptom | guard |
-|---|---|
-| 「HW1」 exists in three courses with different dates | a name shared by several courses requires the *line* to name the course |
-| 「期中考」 is generic | generic exam names (期中考/期末考/模擬考) are ALWAYS ambiguous |
-| 「10/23 → 10/30」 narrates a change and is correct | lines with →/改成/原為/修正 are not drift |
-| a date inside a capture file's name is a filename | strip path tokens before matching |
-| 「我先前寫…是錯的」 quotes the stale value | lines with negation/correction wording are not drift |
-| 「due 10/29、lock 10/30」 states two different facts | a `lock_at` date is not a `due_at` date |
-| 「✅ 已繳交 (2026-10-24 實查 submitted)」 quotes the day the state was checked | a date followed by 實查／查於／verified／checked is a *query* date, not a deadline — ignore it |
-
-A checker that reports zero must be *proven* to detect drift: inject a known-stale
-value into a live page, confirm it fires, revert. A checker that has only ever
-reported "clean" is untested.
-
 ### The scope you cannot fetch is the scope you must read
 
 Some exam scope is not in the API at all. For one course, the scope had to be
@@ -1317,16 +1226,14 @@ a wall-clock constraint the API's `due_at` does not capture. Report the
 distinction explicitly, and when an `on_paper` item shares a date with an
 online item, the physical one is the one to schedule first.
 
-Two facts to carry into the report rather than into a task body as settled:
+Two facts to carry into the report:
 
 **a course with zero announcements this term may still have all its material**, in the
-Files tree and already downloaded. Check the local captures before treating a missing
-announcement as a gap. A task whose stated premise is 「unknown」 when the answer was
-already on disk is worse than no task.
+Files tree and already downloaded. Check the local files before treating a missing
+announcement as a gap.
 
-**a deadline in an announcement is not automatically an action item.** Same reasoning,
-different source: an announcement states a date, the decision to act on it is the
-user's. That is what an inbox is for.
+**an announcement states a date; whether that date becomes an action is the
+caller's decision.** The tool reports what the course said and stops there.
 
 Do not run a Flask daemon. It is a second always-on service for a one-endpoint
 need, and it pulls in an ORM the pinned versions cannot support on this interpreter.
@@ -1342,6 +1249,12 @@ not code. Say this before anything else when someone asks 「架構是什麼」:
 | the manual | `SKILL.md` (large) | the agent-facing playbook: workflows + every trap this tool hit |
 | the depth | `references/*.md` | same material, one file per topic |
 | the packaging | `pyproject.toml` + `.github/workflows/` | `scripts/ntu_fetch.py` → PyPI `ntu-cool-cli`; CI + publish |
+
+**What this repo is not.** It is a read-only fetcher, not a filing system.
+Where a capture is filed, which deadline becomes a task, and how one fact is
+kept from drifting across many pages are a separate process with its own
+rules, and those rules do not belong here. The tool's boundary is stated in
+§ What this tool does — and where it stops.
 
 **`SKILL.md` being long is not bloat.** Each section is a 「I assumed A, it was B,
 because C」 trap record. Do not summarise it as documentation noise and do not
@@ -1368,18 +1281,6 @@ it stays that way — resist wrapping them in a base class or a registry.
 | fix login | `cool_login()` |
 | change how the agent uses the tool | `SKILL.md` |
 | ship a new version | `pyproject.toml`'s `version`, then the release chain in `references/release-and-packaging.md` |
-
-### The repo is the source; the installed skill is a copy — they drift silently
-
-`SKILL.md` lives in **two** places: this repo (the source, pushed to GitHub,
-published to PyPI) and `~/.hermes/skills/ntu-cool-cli/` (the copy Hermes
-actually loads). **Editing one does not touch the other**, so a fix applied to
-the repo is not in effect until the skill copy is refreshed, and vice versa.
-
-When the user edits one side, say which side they are on and whether the other
-one needs a copy back. Bump the `version:` field in the frontmatter when the
-two are re-synced, so a stale copy is visible in the frontmatter instead of
-silently serving old instructions.
 
 ### Reading the repo from a laptop over SSH
 

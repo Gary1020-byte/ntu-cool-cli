@@ -145,18 +145,12 @@ the `size` field in the hop-1 JSON, and unzip a `.zip` to confirm the entry
 count. A 200 that carries the login page is answered for an expired signed URL
 — the magic check is what catches that.
 
-## The handout's own test file decides the build
+## A compile error in a handout is the student's, not the tool's
 
-DS CA3's `TestDList.cpp` does `#include "LockDList.cpp"` but **not**
-`"DList.cpp"` / `"DListNode.cpp"`. The template definitions of `DList<int>`
-are never visible in that translation unit, and the link fails with
-`undefined reference to DList<int>::DList()`.
+A C++ handout can fail to link for reasons that have nothing to do with fetching
+it — a test file that `#include`s one source but not the others is a classic
+case, and the fix (explicit instantiation at the end of each `.cpp`) is a
+course-level answer rather than a retrieval one.
 
-Explicit instantiation at the end of each `.cpp` makes it link either way:
-
-```cpp
-template class DList<int>;
-template class DList<double>;
-template class DList<char>;
-template class DList<std::string>;
-```
+The tool's job ends at delivering the bytes. Debugging a student's handout
+belongs to the assignment workflow, not here.

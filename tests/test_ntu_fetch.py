@@ -428,7 +428,7 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
     COURSE_CODE_RE = re.compile(r"(?<!\d)[56]\d{2}\s?\d{5}(?!\d)")
     PASSWORD_RE = re.compile(r"authenticate\(\s*[\"'][^\"']+[\"']\s*\)")
     # A course title: a Chinese discipline noun, optionally with a leading
-    # qualifier and an optional trailing numeral (<COURSE>, <COURSE>, 數學).
+    # qualifier and an optional trailing numeral (力學一, 電路一, 數學).
     CN_TITLE_RE = re.compile(
         r"(?<![一-鿿])[一-鿿]{2,4}(?:力學|數學|電路|結構|物理|化學|電子)"
         r"(?:[一二三四五六七八九])?(?![一-鿿])")
@@ -449,7 +449,7 @@ class TestNoPersonalCourseRoster(unittest.TestCase):
     #   - a Chinese discipline noun (力學 / 數學 / 電路 / 結構 / 物理 / 化學)
     #   - a course prefix (a two-to-four letter course tag, then CA / HW /
     #     CH / note / mid / exam)
-    #   - an academic-term prefix (1151_..., <TERM>-mid...)
+    #   - an academic-term prefix (a three-or-four-digit term, then _ or -)
     #   - a student id
     #   - an English course name
     #
