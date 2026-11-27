@@ -57,7 +57,17 @@ which is fed from `main`. Before claiming a fix is live, confirm it is on
 
 ## Credentials for publishing
 
-Publishing uses an API token or trusted publishing configured on the repo. The
-token is a credential: it goes in the environment or the CI secret store, never
-in chat and never in the repo. `NTU_USER`/`NTU_PASS` are a different thing
-entirely and are unrelated to publishing.
+The publish workflow uses PyPI trusted publishing (OIDC), but no matching
+publisher is registered on PyPI for owner `Gary1020-byte`, repo `ntu-cool-cli`,
+and workflow `publish.yml`. Trusted publishing is intentionally not registered
+at the moment, so the workflow fails at `Publish to PyPI` with
+`invalid-publisher: valid token, but no corresponding publisher` until that
+account-level setting changes. It has failed on all five releases so far:
+v1.3.1 (run 40116362281), v1.3.2 (40119970745), v1.3.3 (40509977886), v1.3.4
+(40530382650), and v1.3.5 (40533348823); the workflow has never published
+successfully. All five versions are on PyPI because they were uploaded by hand,
+and the red CI runs did not block any release.
+
+The upload is irreversible: a filename cannot be re-uploaded under the same
+version. If a run fails after a partial upload, check PyPI before retrying it;
+do not blindly re-run. `NTU_USER`/`NTU_PASS` are unrelated to publishing.

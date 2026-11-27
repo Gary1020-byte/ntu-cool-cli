@@ -39,10 +39,12 @@ jobs:
 
       # Trusted publishing (OIDC) needs a matching publisher registered on the
       # PyPI side: owner `Gary1020-byte`, repo `ntu-cool-cli`, workflow
-      # `publish.yml`. Without it this step fails with
-      # `invalid-publisher: valid token, but no corresponding publisher` --
-      # which is exactly what happened to v1.3.1 and v1.3.2. Those two were
-      # uploaded by hand; this workflow was never exercised successfully.
+      # `publish.yml`. It is deliberately not registered right now, so this
+      # step will keep failing with
+      # `invalid-publisher: valid token, but no corresponding publisher` until
+      # that account-level setting changes. The five releases v1.3.1 through
+      # v1.3.5 were all uploaded by hand; this workflow has never published
+      # successfully, and its red runs have not blocked any release.
       #
       # If the publisher is not set up, upload the built wheel and sdist by
       # hand instead of re-running this workflow: a filename cannot be
